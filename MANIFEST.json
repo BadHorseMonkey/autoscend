@@ -1,3 +1,4 @@
 {
-  "sync_dir": "./RELEASE/"
+  "sync_dir": "./RELEASE/",
+  "script_name": "Autoscend"
 }
