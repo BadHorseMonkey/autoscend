@@ -214,7 +214,7 @@ void initializeSettings() {
 	bond_initializeSettings();
 	fallout_initializeSettings();
 	pete_initializeSettings();
-	digimon_initializeSettings();
+	pokefam_initializeSettings();
 	majora_initializeSettings();
 	glover_initializeSettings();
 	bat_initializeSettings();
@@ -1104,7 +1104,7 @@ void initializeDay(int day)
 	pete_initializeDay(day);
 	cs_initializeDay(day);
 	bond_initializeDay(day);
-	digimon_initializeDay(day);
+	pokefam_initializeDay(day);
 	glover_initializeDay(day);
 	bat_initializeDay(day);
 	grey_goo_initializeDay(day);
@@ -1203,7 +1203,24 @@ void initializeDay(int day)
 			cli_execute("counters");
 			council();
 		}
-	}
+		
+		// If we have the shortest order cook, loop familiars that will benefit from that.
+		if (pathHasFamiliar() && pathAllowsChangingFamiliar())
+		{
+			familiar init_fam = my_familiar();
+			if (have_familiar($familiar[shorter-order cook]))
+			{
+				foreach fam in $familiars[ghost of crimbo carols, ghost of crimbo commerce, ghost of crimbo cheer]
+				{
+					if (have_familiar(fam))
+					{
+						use_familiar(fam);
+					}
+				}
+			}
+			use_familiar(init_fam);
+		}
+	}//day1
 	else if(day == 2)
 	{
 		equipBaseline();
@@ -2669,7 +2686,7 @@ boolean doTasks()
 	if(LM_jello())						return true;
 	if(LM_fallout())					return true;
 	if(LM_groundhog())					return true;
-	if(LM_digimon())					return true;
+	if(LM_pokefam())					return true;
 	if(LM_majora())						return true;
 	if(LM_batpath()) 					return true;
 	if(doHRSkills())					return true;
