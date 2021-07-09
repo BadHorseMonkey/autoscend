@@ -392,13 +392,6 @@ boolean L9_aBooPeak()
 	{
 		boolean doThisBoo = false;
 
-		if (isActuallyEd())
-		{
-			if(item_amount($item[Linen Bandages]) == 0)
-			{
-				return false;
-			}
-		}
 		familiar priorBjorn = my_bjorned_familiar();
 
 		string lihcface = "";
@@ -527,6 +520,11 @@ boolean L9_aBooPeak()
 		{
 			doThisBoo = true;
 		}
+		//assume min bandage HP resotred to ensure we can heal enough
+		if((considerHP >= totalDamage) && isActuallyEd() && ((item_amount($item[Linen Bandages])*20 + my_hp()) >= totalDamage))
+		{
+			doThisBoo = true;
+		}
 
 		if(doThisBoo)
 		{
@@ -553,10 +551,7 @@ boolean L9_aBooPeak()
 			auto_beachCombHead("spooky");
 
 			set_property("choiceAdventure611", "1");
-			if((my_hp() - 50) < totalDamage)
-			{
-				acquireHP();
-			}
+			
 			if(get_property("auto_aboopending").to_int() == 0)
 			{
 				if(item_amount(clue) > 0)

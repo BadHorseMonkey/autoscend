@@ -1,4 +1,4 @@
-since r20762;	//min mafia revision needed to run this script. Last update: Add 'logPreferenceChangeFilter', which is a comma separated list of preferences to not log when logPreferenceChange is enabled
+since r20782;	//min mafia revision needed to run this script. Last update: Initial support for July IotM
 /***
 	autoscend_header.ash must be first import
 	All non-accessory scripts must be imported here
@@ -1566,26 +1566,59 @@ boolean LX_attemptPowerLevel()
 		cloverUsageFinish();
 		if(adv_spent) return true;
 	}
-
-	// [Haunted Gallery] is the optimal powerleveling spot if you have no scaling monsters nor clovers left.
+	
 	if (internalQuestStatus("questM21Dance") > 3)
 	{
-		switch (my_primestat())
+		int goal_count = 0;
+		if(my_primestat() == $stat[Muscle])
 		{
-			case $stat[Muscle]:
-				backupSetting("louvreDesiredGoal", "4"); // get Muscle stats
-				break;
-			case $stat[Mysticality]:
-				backupSetting("louvreDesiredGoal", "5"); // get Myst stats
-				break;
-			case $stat[Moxie]:
-				backupSetting("louvreDesiredGoal", "6"); // get Moxie stats
-				break;
+			goal_count++;
 		}
-		providePlusNonCombat(25, true);
-		if(autoAdv($location[The Haunted Gallery])) {
-			return true;
+		if(my_primestat() == $stat[Mysticality] || my_basestat($stat[Mysticality]) < 70)	//war outfit requires 70 base mys
+		{
+			goal_count++;
 		}
+		if(my_primestat() == $stat[Moxie] ||
+		my_basestat($stat[Moxie]) < 70 || 	//war outfit requires 70 base mox
+		get_property("auto_beatenUpCount").to_int() > 5)	//if we are getting beaten up we should raise moxie
+		{
+			goal_count++;
+		}
+		if(my_meat() < meatReserve() + 1000)
+		{
+			goal_count++;
+		}
+		boolean prefer_bedroom = false;
+		if(goal_count > 1) //for multiple targets then haunted bedroom is best
+		{
+			prefer_bedroom = true;
+		}
+		else if(providePlusNonCombat(25, true, true) < 15)	//only perform the simulation if goal_count is 1
+		{
+			prefer_bedroom = true;	//for one target it depends on your noncombat. bad -combat prefers bedroom. otherwise prefer haunted gallery
+		}
+		
+		if(prefer_bedroom)
+		{
+			if(autoAdv($location[The Haunted Bedroom])) return true;
+		}
+		else		//do [The Haunted Gallery] instead
+		{
+			switch (my_primestat())		//we only ever do the haunted gallery if the sole stat we want is primestat.
+			{
+				case $stat[Muscle]:
+					backupSetting("louvreDesiredGoal", "4"); // get Muscle stats
+					break;
+				case $stat[Mysticality]:
+					backupSetting("louvreDesiredGoal", "5"); // get Myst stats
+					break;
+				case $stat[Moxie]:
+					backupSetting("louvreDesiredGoal", "6"); // get Moxie stats
+					break;
+			}
+			providePlusNonCombat(25, true);
+			if(autoAdv($location[The Haunted Gallery])) return true;
+		}		
 	}
 	return false;
 }
@@ -1742,7 +1775,6 @@ boolean LX_freeCombats(boolean powerlevel)
 	if(!in_koe() && get_property("_machineTunnelsAdv").to_int() < 5 && canChangeToFamiliar($familiar[Machine Elf]))
 	{
 		auto_log_debug("LX_freeCombats is adventuring in [The Deep Machine Tunnels]");
-		backupSetting("choiceAdventure1119", 1);
 
 		familiar bjorn = my_bjorned_familiar();
 		if(bjorn == $familiar[Machine Elf])
@@ -2280,6 +2312,13 @@ boolean adventureFailureHandler()
 		{
 			tooManyAdventures = false;
 		}
+		
+		boolean can_powerlevel_stench = elementalPlanes_access($element[stench]) && auto_have_skill($skill[Summon Smithsness]) && get_property("auto_beatenUpCount").to_int() == 0;
+		boolean has_powerlevel_iotm = can_powerlevel_stench || elementalPlanes_access($element[spooky]) || elementalPlanes_access($element[cold]) || elementalPlanes_access($element[sleaze]) || elementalPlanes_access($element[hot]) || neverendingPartyAvailable();
+		if(!has_powerlevel_iotm && $locations[The Haunted Gallery, The Haunted Bedroom] contains place)
+		{
+			tooManyAdventures = false;		//if we do not have iotm powerlevel zones then we are forced to use haunted gallery or bedroom
+		}
 
 		if(tooManyAdventures)
 		{
@@ -2591,9 +2630,10 @@ boolean doTasks()
 	{
 		auto_log_warning("I am in aftercore", "red");
 		return false;
-	}	
-	if(inCasual())
-	{	
+	}
+	if (in_casual() && get_property("_casualAscension").to_int() != -1)
+	{
+		set_property("_casualAscension", my_ascensions());
 		auto_log_warning("I think I'm in a casual ascension and should not run. To override: set _casualAscension = -1", "red");
 		return false;	
 	}
@@ -2686,7 +2726,6 @@ boolean doTasks()
 	if(LM_jello())						return true;
 	if(LM_fallout())					return true;
 	if(LM_groundhog())					return true;
-	if(LM_pokefam())					return true;
 	if(LM_majora())						return true;
 	if(LM_batpath()) 					return true;
 	if(doHRSkills())					return true;
@@ -2788,11 +2827,6 @@ void auto_begin()
 	//This also should set our path too.
 	string page = visit_url("main.php");
 	page = visit_url("api.php?what=status&for=4", false);
-	if((get_property("_casualAscension").to_int() >= my_ascensions()) && (my_ascensions() > 0))
-	{
-		return;
-	}
-
 	if(contains_text(page, "Being Picky"))
 	{
 		picky_startAscension();
