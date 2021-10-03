@@ -147,8 +147,8 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	}
 	
 	//nanorhino familiar stuff
-	#Do not accidentally charge the nanorhino with a non-banisher
-	if(my_familiar() == $familiar[Nanorhino] && have_effect($effect[Nanobrawny]) == 0)
+	boolean nanorhino_charged = get_property("_nanorhinoCharge").to_int() >= 100;
+	if(my_familiar() == $familiar[Nanorhino] && nanorhino_charged && have_effect($effect[Nanobrawny]) + have_effect($effect[Nanobrainy]) + have_effect($effect[Nanoballsy]) == 0)
 	{
 		foreach it in $skills[Toss, Clobber, Shell Up, Lunge Smack, Thrust-Smack, Headbutt, Kneebutt, Lunging Thrust-Smack, Club Foot, Shieldbutt, Spirit Snap, Cavalcade Of Fury, Northern Explosion, Spectral Snapper, Harpoon!, Summon Leviatuga]
 		{
@@ -235,15 +235,15 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	}
 	
 	//this completes the quest Advertise for the Mysterious Island Arena which is a sidequest which accelerates the L12 frat-hippy war quest
-	if((canUse($item[Rock Band Flyers]) || canUse($item[Jam Band Flyers])) && (my_location() != $location[The Battlefield (Frat Uniform)]) && (my_location() != $location[The Battlefield (Hippy Uniform)]) && !get_property("auto_ignoreFlyer").to_boolean())
+	if((canUse($item[Rock Band Flyers]) || canUse($item[Jam Band Flyers])) && (get_property("flyeredML").to_int() < 10000) && (my_location() != $location[The Battlefield (Frat Uniform)]) && (my_location() != $location[The Battlefield (Hippy Uniform)]) && !get_property("auto_ignoreFlyer").to_boolean())
 	{
-		string stall = getStallString(enemy);
-		if(stall != "")
+		skill stunner = getStunner(enemy);
+		if(stunner != $skill[none])
 		{
-			return stall;
+			return useSkill(stunner);
 		}
 
-		if(canUse($item[Rock Band Flyers]) && (get_property("flyeredML").to_int() < 10000))
+		if(canUse($item[Rock Band Flyers]))
 		{
 			if(canUse($item[Time-Spinner]) && auto_have_skill($skill[Ambidextrous Funkslinging]))
 			{
@@ -251,7 +251,7 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 			}
 			return useItem($item[Rock Band Flyers]);
 		}
-		if(canUse($item[Jam Band Flyers]) && (get_property("flyeredML").to_int() < 10000))
+		if(canUse($item[Jam Band Flyers]))
 		{
 			if(canUse($item[Time-Spinner]) && auto_have_skill($skill[Ambidextrous Funkslinging]))
 			{
@@ -299,11 +299,34 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	}
 	
 	//use latte iotm to restore 50% of max MP
-	if((!in_zelda() && my_class() != $class[Vampyre] && my_path() != "Zombie Slayer") &&	//paths that do not use MP
+	if((!in_plumber() && my_class() != $class[Vampyre] && my_path() != "Zombie Slayer") &&	//paths that do not use MP
 	canUse($skill[Gulp Latte]) &&
 	my_mp() * 2 < my_maxmp())		//gulp latte restores 50% of your MP. do not waste it.
 	{
 		return useSkill($skill[Gulp Latte]);
+	}
+
+	//stinkbug physically resistant monsters
+	if(!(have_equipped($item[Protonic Accelerator Pack]) && isGhost(enemy)))
+	{
+		if(canUse($skill[Summon Love Stinkbug]) && (enemy.physical_resistance >= 100) && (monster_element(enemy) != $element[stench]))
+		{
+			return useSkill($skill[Summon Love Stinkbug]);
+		}
+	}
+
+	// use red rocket from Clan VIP Lounge to get 5x stats from next food item consumed. Does not stagger on use
+	if(canUse($item[red rocket]) && have_effect($effect[Everything Looks Red]) <= 0 && have_effect($effect[Ready to Eat]) <= 0 && canSurvive(5.0) &&
+		// consumeStuff fills liver first up to 10 or 15 before eating, pending if billiards room if completed. Gives confidence that we will eat within 100 turns.
+		my_inebriety() >= 10 && my_adventures() < 100)
+	{
+		//use if next food is large in size. Currently autoConsume doesn't analyze stat gain, which would be better
+		item simulationOutput = auto_autoConsumeOneSimulation("eat");
+		if (simulationOutput != $item[none] && simulationOutput.fullness > 3)
+		{
+			return useItem($item[red rocket]);
+		}
+		
 	}
 	
 	return "";

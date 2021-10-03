@@ -1,5 +1,50 @@
 import<autoscend.ash>
 
+void auto_beaten_handler()
+{
+	if(have_effect($effect[Beaten Up]) == 0)
+	{
+		remove_property("_auto_beatenUpTracked");	//if we still have it by now then we were unable to restore it but it expired naturally.
+		return;
+	}
+	if(!get_property("_auto_beatenUpTracked").to_boolean())		//we only want to track each instance of beaten up once
+	{
+		set_property("_auto_beatenUpTracked", true);
+		set_property("auto_beatenUpCount", get_property("auto_beatenUpCount").to_int() + 1);
+		string loc = get_property("auto_beatenUpLocations");
+		if(loc != "") loc += ",";
+		loc += "day:" +my_daycount()+ ":level:" +my_level()+ ":place:" +my_location();
+		set_property("auto_beatenUpLocations", loc);
+	}
+	
+	if(my_location() == $location[The X-32-F Combat Training Snowman])
+	{
+		auto_log_info("I got beaten up at the snojo, let's not keep going there and dying....", "red");
+		set_property("_snojoFreeFights", 10);
+	}
+	else if(last_monster() == $monster[ninja snowman assassin])
+	{
+		auto_log_info("I got beaten up by a [ninja snowman assassin]. disabling ninja route", "red");
+		set_property("auto_L8_ninjaAssassinFail", true);
+	}
+	else auto_log_warning("I got beaten up", "red");
+	
+	if(get_property("auto_beatenUpCount").to_int() <= 10 && my_mp() >= mp_cost($skill[Tongue of the Walrus]) && auto_have_skill($skill[Tongue of the Walrus]))
+	{
+		auto_log_info("trying to recover with [Tongue of the Walrus]", "red");
+		use_skill(1, $skill[Tongue of the Walrus]);
+		if(have_effect($effect[Beaten Up]) == 0)
+		{
+			remove_property("_auto_beatenUpTracked");
+			return;
+		}
+		else
+		{
+			auto_log_warning("Mysteriously failed to recover beaten up with [Tongue of the Walrus]");
+		}
+	}
+}
+
 boolean auto_post_adventure()
 {
 	auto_log_debug("Running auto_post_adv.ash");
@@ -149,9 +194,16 @@ boolean auto_post_adventure()
 		}
 	}
 
-	float regen = numeric_modifier("MP Regen Min").to_float() * 2.0;
-	regen += numeric_modifier("MP Regen Max").to_float();
-	regen = regen / 3.0;
+	if(my_class() == $class[Avatar of Jarlsberg] && auto_have_skill($skill[Early Riser]))
+	{
+		foreach sk in $skills[Conjure Cream, Conjure Dough, Conjure Cheese, Conjure Eggs, Conjure Meat Product, Conjure Vegetables, Conjure Potato, Conjure Fruit]
+		{
+			if (auto_have_skill(sk) && sk.timescast < sk.dailylimit && (my_mp() - 40) >= mp_cost(sk))
+			{
+				use_skill(1, sk);
+			}
+		}
+	}
 
 	if(my_class() == $class[Avatar of Sneaky Pete])
 	{
@@ -206,7 +258,7 @@ boolean auto_post_adventure()
 	{
 		if ($location[The Shore\, Inc. Travel Agency] != my_location())
 		{
-			if (my_servant() != $servant[none] && my_servant().experience < 196)
+			if (my_servant() != $servant[none])
 			{
 				buffMaintain($effect[Purr of the Feline], 10, 1, 10);
 			}
@@ -224,11 +276,6 @@ boolean auto_post_adventure()
 			if(!($locations[Hippy Camp, The Outskirts Of Cobb\'s Knob, Pirates of the Garbage Barges, The Secret Government Laboratory] contains my_location()))
 			{
 				buffMaintain($effect[Bounty of Renenutet], 10, 1, 10);
-			}
-
-			if ((my_level() < 13 || get_property("auto_disregardInstantKarma").to_boolean()) && my_level() > 3 && !get_property("auto_needLegs").to_boolean() && !($locations[Hippy Camp, The Outskirts Of Cobb\'s Knob, The Smut Orc Logging Camp] contains my_location()))
-			{
-				buffMaintain($effect[Blessing of Serqet], 10, 1, 10);
 			}
 
 			foreach ef in $effects[Prayer Of Seshat, Wisdom Of Thoth, Power of Heka, Hide Of Sobek, Bounty Of Renenutet]
@@ -450,7 +497,8 @@ boolean auto_post_adventure()
 	boolean [skill] toCast = $skills[Prevent Scurvy and Sobriety, Acquire Rhinestones, Advanced Cocktailcrafting, Advanced Saucecrafting, Communism!, Grab a Cold One, Lunch Break, Pastamastery, Perfect Freeze, Request Sandwich, Spaghetti Breakfast, Summon Alice\'s Army Cards, Summon Carrot, Summon Confiscated Things, Summon Crimbo Candy, Summon Geeky Gifts, Summon Hilarious Objects, Summon Holiday Fun!, Summon Kokomo Resort Pass, Summon Tasteful Items];
 	
 	boolean buff_familiar = pathHasFamiliar() && !get_property("_auto_bad100Familiar").to_boolean();
-
+	float regen = (numeric_modifier("MP Regen Min").to_float() + numeric_modifier("MP Regen Max").to_float())/2.0;
+	
 	if(my_maxmp() < 50)
 	{
 		buffMaintain($effect[The Magical Mojomuscular Melody], 3, 1, 5);
@@ -840,7 +888,7 @@ boolean auto_post_adventure()
 	}
 
 	// Experience and Powerlevelling Section
-	if((my_level() < 13) || (get_property("auto_disregardInstantKarma").to_boolean()))
+	if(my_level() < 13 || get_property("auto_disregardInstantKarma").to_boolean())
 	{
 		// +Stat expressions based on mainstat
 		if(my_primestat() == $stat[Muscle])
@@ -864,13 +912,10 @@ boolean auto_post_adventure()
 		auto_faceCheck("Patient Smile");
 		auto_faceCheck("Knowing Smile");
 
-		// Generic +Stat Buffs
-		buffMaintain($effect[Carol of the Thrills], 30, 1, 1);
-
-		// Aptitude is not worth it to maintain if we have Ur-Kel's
-		if((40 < regen * auto_predictAccordionTurns()) && (have_effect($effect[Ur-Kel\'s Aria of Annoyance]) == 0))
+		if(my_meat() > meatReserve()+5000)		//these are only worth it if you have lots of excess meat
 		{
-			buffMaintain($effect[Aloysius\' Antiphon of Aptitude], 40, 1, 1);
+			buffMaintain($effect[Carol of the Thrills], 30, 1, 1);		//3MP/adv for non ATs. +3 XP/fight
+			buffMaintain($effect[Aloysius\' Antiphon of Aptitude], 40, 1, 1);	//4MP/adv for non ATs. +3 XP/fight split equally 1 per stat.
 		}
 	}
 
@@ -988,31 +1033,6 @@ boolean auto_post_adventure()
 
 	buyableMaintain($item[Turtle Pheromones], 1, 800, my_class() == $class[Turtle Tamer]);
 
-	if((get_property("auto_beatenUpCount").to_int() <= 10) && (have_effect($effect[Beaten Up]) > 0) && (my_mp() >= mp_cost($skill[Tongue of the Walrus])) && auto_have_skill($skill[Tongue of the Walrus]))
-	{
-		auto_log_warning("Owwie, was beaten up but trying to recover", "red");
-		if(my_location() == $location[The X-32-F Combat Training Snowman])
-		{
-			auto_log_info("At the snojo, let's not keep going there and dying....", "red");
-			set_property("_snojoFreeFights", 10);
-		}
-		if(last_monster() == $monster[ninja snowman assassin])
-		{
-			auto_log_info("We were beaten up by a [ninja snowman assassin]. disabling ninja route", "red");
-			set_property("auto_L8_ninjaAssassinFail", true);
-		}
-		set_property("auto_beatenUpCount", get_property("auto_beatenUpCount").to_int() + 1);
-		use_skill(1, $skill[Tongue of the Walrus]);
-	}
-
-
-	# We only do this in aftercore because we don't want a spiralling death loop in-run.
-	if(inAftercore() && (have_effect($effect[Beaten Up]) > 0) && (my_mp() >= mp_cost($skill[Tongue of the Walrus])) && auto_have_skill($skill[Tongue of the Walrus]))
-	{
-		auto_log_warning("Owwie, was beaten up but trying to recover", "red");
-		use_skill(1, $skill[Tongue of the Walrus]);
-	}
-
 	#Should we create a separate function to track these? How many are we going to track?
 	if((last_monster() == $monster[Writing Desk]) && (get_property("lastEncounter") == $monster[Writing Desk]) && (have_effect($effect[Beaten Up]) == 0))
 	{
@@ -1023,6 +1043,8 @@ boolean auto_post_adventure()
 		set_property("auto_modernzmobiecount", "" + (get_property("auto_modernzmobiecount").to_int() + 1));
 		auto_log_info("Fought " + get_property("auto_modernzmobiecount") + " modern zmobies.", "blue");
 	}
+
+	auto_beaten_handler();
 
 	if (get_property("lastEncounter") == "Welcome to the Great Overlook Lodge")
 	{
@@ -1046,13 +1068,8 @@ boolean auto_post_adventure()
 		}
 	}
 
-	set_property("auto_combatDirective", "");
-	set_property("auto_digitizeDirective", "");
-
-	if(have_effect($effect[Beaten Up]) > 0)
-	{
-		set_property("auto_beatenUpCount", get_property("auto_beatenUpCount").to_int() + 1);
-	}
+	remove_property("auto_combatDirective");
+	remove_property("auto_digitizeDirective");
 	
 	auto_log_info("Post Adventure done, beep.", "purple");
 	return true;

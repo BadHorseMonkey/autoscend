@@ -128,7 +128,7 @@ boolean LX_unlockDesert()
 	}
 	
 	//plumbers should wait until they are rich enough to buy the desert pass. As they have few uses for meat.
-	if(in_zelda() && !isAboutToPowerlevel())
+	if(in_plumber() && !isAboutToPowerlevel())
 	{
 		auto_log_info("Plumbers have few uses for meat. Delaying desert unlock until we can buy a pass.", "blue");
 		return false;
@@ -485,7 +485,7 @@ boolean LX_dailyDungeonToken()
 	{
 		pullXWhenHaveY($item[Ring of Detect Boring Doors], 1, 0);
 	}
-	if(item_amount($item[Pick-O-Matic Lockpicks]) == 0)
+	if(item_amount($item[Pick-O-Matic Lockpicks]) == 0 && storage_amount($item[Platinum Yendorian Express Card]) > 0)
 	{
 		pullXWhenHaveY($item[Platinum Yendorian Express Card], 1, 0);
 	}

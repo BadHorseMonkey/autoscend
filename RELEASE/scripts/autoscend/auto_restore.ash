@@ -141,6 +141,20 @@ string to_string(__RestorationOptimization[int] optima, boolean simple)
 	return val;
 }
 
+void auto_log_restore_debug(string s, int level)
+{
+	//restore debug log is extremely girthy and usually not needed. as such it has its own custom setting for displaying it.
+	//0 = no extra debugging. 1 = log the stages and their results 2 = log restorer data dump.
+	if(get_property("auto_log_level").to_int() < 3)
+	{
+		return;		//regular debugging is off. so extra debugging is also off.
+	}
+	if(get_property("auto_log_level_restore").to_int() >= level)
+	{
+		auto_log_debug(s);
+	}
+}
+
 static boolean[effect] __all_negative_effects;
 static __RestorationMetadata[string] __known_restoration_sources;
 static __RestorationOptimization[int] __restore_maximizer_cache;
@@ -457,7 +471,7 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 			restored_amount += numeric_modifier("Bonus Resting HP");
 		}
 
-		if (metadata.name == "Disco Nap" && auto_have_skill($skill[Adventurer of Leisure]))
+		if (metadata.name == "disco nap" && auto_have_skill($skill[Adventurer of Leisure]))
 		{
 			restored_amount = 40;
 		}
@@ -677,6 +691,12 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 		{
 			return 0.0;
 		}
+		if (resource_type == "hp" && metadata.type == "skill")
+		{
+			// don't consider excess healing from spells as "waste".
+			// It would be better to price this in meat terms across all healing but that's not easy to do right now.
+			return 0.0;
+		}
 		return max(0.0, get_value(resource_type, "starting") + get_value(resource_type, "max_restorable") - goal);
 	}
 
@@ -754,7 +774,7 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 		}
 
 		float price = get_value("meat_per_use");
-		if(price < 0.001)
+		if (price < 0.0)
 		{
 			return -1.0;
 		}
@@ -1159,7 +1179,7 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 			}
 			else
 			{
-				auto_log_debug("Removed from consideration: " + to_string(T[Ti], true));
+				auto_log_restore_debug("Removed from consideration: " + to_string(T[Ti], true), 1);
 			}
 			Ti++;
 		}
@@ -1173,7 +1193,7 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 			}
 			else
 			{
-				auto_log_debug("Removed from consideration: " + to_string(B[Bi], true));
+				auto_log_restore_debug("Removed from consideration: " + to_string(B[Bi], true), 1);
 			}
 			Bi++;
 		}
@@ -1197,7 +1217,7 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 
 	__RestorationOptimization[int] ranked_optimization(__RestorationOptimization[int] p, int[string] value_ranks, boolean[string] maximize_keys, boolean[string] minimize_keys)
 	{
-		auto_log_debug("Beginning optimization of "+count(p)+" restoration options.");
+		auto_log_restore_debug("Beginning optimization of "+count(p)+" restoration options.", 1);
 		if(count(p) == 0)
 		{
 			return p;
@@ -1205,11 +1225,11 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 
 		__RestorationOptimization[int] ranked = copy(p);
 		int[int] ranks = ordered_ranks(value_ranks);
-		auto_log_debug(count(ranked)+" options before optimization: " + to_string(ranked, false));
+		auto_log_restore_debug(count(ranked)+" options before optimization: " + to_string(ranked, false), 2);
 		foreach _, rank in ranks
 		{
 			string desc = (__RANKED_GOAL_DESCRIPTIONS contains rank) ?  __RANKED_GOAL_DESCRIPTIONS[rank] : "whoops, someone changed things and didnt update the descriptions. Bad dev.";
-			auto_log_debug("Rank " + rank + " optimization, prefer to... " + desc);
+			auto_log_restore_debug("Rank " + rank + " optimization, prefer to... " + desc, 1);
 			if(count(ranked) <= 1)
 			{
 				break;
@@ -1284,7 +1304,7 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 
 	void quick_sort_maximize(__RestorationOptimization[int] p, boolean[string] sort_keys, int[string] value_ranks)
 	{
-		auto_log_debug("Sorting "+count(p)+" options by primary objectives.");
+		auto_log_restore_debug("Sorting "+count(p)+" options by primary objectives.", 1);
 		if(count(p) > 1)
 		{
 			quick_sort_maximize(p, sort_keys, value_ranks, 0, count(p)-1);
@@ -1294,7 +1314,7 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 	__RestorationOptimization[int] apply_constraints(__RestorationOptimization[int] p, boolean[string] constraint_keys)
 	{
 		int c = count(p);
-		auto_log_debug("Applying constraints to "+c+" objective values.");
+		auto_log_restore_debug("Applying constraints to "+c+" objective values.", 1);
 
 		__RestorationOptimization[int] constrained;
 
@@ -1315,7 +1335,7 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 			}
 		}
 
-		auto_log_debug("Removed  "+(c-count(constrained))+" restore options from consideration.");
+		auto_log_restore_debug("Removed  "+(c-count(constrained))+" restore options from consideration.", 1);
 
 		return constrained;
 	}
@@ -1324,7 +1344,7 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 	{
 		if(count(__restore_maximizer_cache) > 0)
 		{
-			auto_log_debug("Recalculating cached restore objective values.");
+			auto_log_restore_debug("Recalculating cached restore objective values.", 0);
 			foreach i, o in __restore_maximizer_cache
 			{
 				__RestorationOptimization recalculated =
@@ -1333,7 +1353,7 @@ __RestorationOptimization[int] __maximize_restore_options(int hp_goal, int mp_go
 		}
 		else
 		{
-			auto_log_debug("Calculating restore objective values.");
+			auto_log_restore_debug("Calculating restore objective values.", 0);
 			foreach name, metadata in __restoration_methods()
 			{
 				__RestorationOptimization o = __calculate_objective_values(hp_goal, mp_goal, meat_reserve, useFreeRests, metadata);
@@ -1570,8 +1590,15 @@ boolean __restore(string resource_type, int goal, int meat_reserve, boolean useF
 		__RestorationOptimization[int] options = __maximize_restore_options(hp_target(), mp_target(), meat_reserve, useFreeRests);
 		if(count(options) == 0)
 		{
-			auto_log_warning("Target "+resource_type+" => " + goal + " - Uh, couldnt determine an effective restoration mechanism. Sorry.", "red");
-			return false;
+			auto_log_error("Target "+resource_type+" => " + goal + " - couldnt determine an effective restoration mechanism");
+			if(get_property("auto_ignoreRestoreFailure").to_boolean() || get_property("_auto_ignoreRestoreFailureToday").to_boolean())
+			{
+				auto_log_error("Ignoring the error as per user instructions");
+ 				return false;
+			}
+			print("Aborting due to restore failure... you can override this setting for today by entering in gCLI:" ,"blue");
+			print("set _auto_ignoreRestoreFailureToday = true" ,"blue");
+			abort();
 		}
 
 		boolean success = false;
@@ -1694,8 +1721,15 @@ boolean acquireMP(int goal, int meat_reserve, boolean useFreeRests)
 	// TODO: move this to general effectiveness method
 	if(my_maxmp() - my_mp() > 300)
 	{
-		auto_sausageEatEmUp(1);		//this involve outfit changes which can lower our maxMP to below what goal was. which would cause infinite loop
-		goal = min(goal, my_maxmp());
+		if (!auto_sausageBlocked())
+		{
+			if(item_amount($item[magical sausage]) < 1 && get_property("_sausagesMade").to_int() < 23)
+			{
+				auto_sausageGrind(1);
+			}
+			auto_sausageEatEmUp(1);		//this involve outfit changes which can lower our maxMP to below what goal was. which would cause infinite loop
+			goal = min(goal, my_maxmp());
+		}
 	}
 	__restore("mp", goal, meat_reserve, useFreeRests);
 	return (my_mp() >= goal);
@@ -1784,6 +1818,12 @@ boolean acquireHP(int goal, int meat_reserve, boolean useFreeRests)
 		return false;
 	}
 	
+	// HP is irrelevant in Pocket Familiars, this removes the function to restore HP
+	if(in_pokefam())
+	{
+		return false;
+	}
+
 	//owning a hand in glove breaks maxHP tracking. need to check possession rather than equipped because unequipping it also breaks it. in fact it causes us to get stuck in an infinite loop of trying to restore hp when already at max HP.
 	//mafia devs think it is actually a kol bug so they won't fix it. https://kolmafia.us/showthread.php?25214
 	if(possessEquipment($item[Hand in Glove]))
@@ -1792,11 +1832,11 @@ boolean acquireHP(int goal, int meat_reserve, boolean useFreeRests)
 		cli_execute("refresh status");
 		if(initial_maxHP == my_maxhp())
 		{
-			auto_log_debug("I just refreshed status because I detected [Hand in Glove]. But it turned out to not have been necessary");
+			auto_log_restore_debug("I just refreshed status because I detected [Hand in Glove]. But it turned out to not have been necessary", 1);
 		}
 		else
 		{
-			auto_log_debug("I just refreshed status because I detected [Hand in Glove] and it corrected my maxHP value. This prevented an infinite loop");
+			auto_log_restore_debug("I just refreshed status because I detected [Hand in Glove] and it corrected my maxHP value. This prevented an infinite loop", 0);
 		}
 	}
 

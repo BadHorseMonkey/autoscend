@@ -9,7 +9,6 @@ import <autoscend/combat/auto_combat_awol.ash>						//path = avatar of west of l
 import <autoscend/combat/auto_combat_bees_hate_you.ash>				//path = bees hate you
 import <autoscend/combat/auto_combat_community_service.ash>			//path = community service
 import <autoscend/combat/auto_combat_heavy_rains.ash>				//path = heavy rains
-import <autoscend/combat/auto_combat_jarlsberg.ash>					//path = avatar of jarlsberg
 import <autoscend/combat/auto_combat_dark_gyffte.ash>				//path = dark gyffte
 import <autoscend/combat/auto_combat_disguises_delimit.ash>			//path = disguises delimit
 import <autoscend/combat/auto_combat_ed.ash>						//path = actually ed the undying
@@ -20,6 +19,7 @@ import <autoscend/combat/auto_combat_ocrs.ash>						//path = one crazy random su
 import <autoscend/combat/auto_combat_pete.ash>						//path = avatar of sneaky pete
 import <autoscend/combat/auto_combat_plumber.ash>					//path = path of the plumber
 import <autoscend/combat/auto_combat_the_source.ash>				//path = the source
+import <autoscend/combat/auto_combat_wildfire.ash>					//path = wildfire
 import <autoscend/combat/auto_combat_quest.ash>						//quest specific handling
 
 //	Advance combat round, nothing happens.
@@ -32,9 +32,7 @@ void auto_combatInitialize(int round, monster enemy, string text)
 	{
 		return;
 	}
-	
-	auto_log_info("auto_combatHandler: " + round, "brown");
-	
+
 	switch(enemy)
 	{
 		case $monster[Government Agent]:
@@ -58,6 +56,20 @@ void auto_combatInitialize(int round, monster enemy, string text)
 	remove_property("auto_funPrefix");						//ocrs specific tracker
 	set_property("auto_combatHandlerThunderBird", "0");
 	set_property("auto_combatHandlerFingernailClippers", "0");
+	set_property("_auto_combatTracker_MortarRound", -1);		//tracks which round we used Stuffed Mortar Shell in.
+	
+	//log some important info.
+	//some stuff is redundant to the pre_adventure function print_footer() so it will not be logged here
+	string tolog = "auto_combat initialized fighting [" +enemy+
+	"]: atk = " +monster_attack()+
+	". def = " +monster_defense()+
+	". HP = " +monster_hp()+
+	". LA = " +monster_level_adjustment();
+	if(in_wildfire())
+	{
+		tolog += ". fire = " +my_location().fire_level;
+	}
+	auto_log_info(tolog, "blue");
 }
 
 string auto_combatHandler(int round, monster enemy, string text)
@@ -81,7 +93,17 @@ string auto_combatHandler(int round, monster enemy, string text)
 	{
 		awol_combat_helper(text);
 	}
-	dd_combat_helper(round, enemy, text);		//disguise delimit mask identification
+	if(in_pokefam())
+	{
+		if(svn_info("Ezandora-Helix-Fossil-branches-Release").revision > 0)
+		{
+		auto_log_info("Combat via Ezandora:", "green");
+		boolean ignore = cli_execute("Pocket Familiars");
+		return "";		//does not matter what it returns here. the cli_execute above does the entire combat
+		}
+	}
+
+	disguises_combat_helper(round, enemy, text);		//disguise delimit mask identification
 
 	if(get_property("auto_combatDirective") != "")
 	{

@@ -145,7 +145,7 @@ boolean tryAddItemToMaximize(slot s, item it)
 {
 	if(!($slots[hat, back, shirt, weapon, off-hand, pants, acc1, acc2, acc3, familiar] contains s))
 	{
-		auto_log_error("But " + s + " is an invalid equip slot... What?", "red");
+		auto_log_error("But " + s + " is an invalid equip slot... What?");
 		return false;
 	}
 	switch(s)
@@ -182,8 +182,9 @@ string defaultMaximizeStatement()
 	
 	string res = "5item,meat,0.5initiative,0.1da 1000max,dr,0.5all res,1.5mainstat,mox,-fumble";
 	if(my_primestat() != $stat[Moxie])
+	{
 		res += ",mox";
-
+	}
 
 	if(my_class() == $class[Vampyre])
 	{
@@ -201,7 +202,7 @@ string defaultMaximizeStatement()
 		borisTrusty();						//forceequip trusty. the modification it makes to the maximizer string will be lost so also do next line
 		res +=	",-weapon,-offhand";		//we do not want maximizer trying to touch weapon or offhand slot in boris
 	}
-	else if(!in_zelda())
+	else if(!in_plumber())
 	{
 		if(my_primestat() == $stat[Mysticality])
 		{
@@ -221,7 +222,11 @@ string defaultMaximizeStatement()
 			res += ",5familiar exp";
 		}
 	}
-	if (in_zelda())
+	if(in_wildfire())
+	{
+		res += ",water,hot res";
+	}
+	if (in_plumber())
 	{
 		res += ",plumber,-ml";
 	}
@@ -346,7 +351,7 @@ void finalizeMaximize()
 		// blocks first hit, but doesn't stack with blood bubble
 		addBonusToMaximize($item[Eight Days a Week Pill Keeper], 100);
 	}
-	if(!in_zelda() && get_property(getMaximizeSlotPref($slot[weapon])) == "" && !maximizeContains("-weapon") && my_primestat() != $stat[Mysticality])
+	if(!in_plumber() && get_property(getMaximizeSlotPref($slot[weapon])) == "" && !maximizeContains("-weapon") && my_primestat() != $stat[Mysticality])
 	{
 		if (my_class() == $class[Seal Clubber] && in_glover())
 		{
@@ -565,7 +570,7 @@ void ensureSealClubs()
 	}
 }
 
-void equipRollover()
+void equipRollover(boolean silent)
 {
 	if(in_gnoob())
 	{
@@ -577,11 +582,16 @@ void equipRollover()
 		cli_execute("buy Li'l Unicorn Costume");
 	}
 
-	auto_log_info("Putting on pajamas...", "blue");
+	if(!silent)
+	{
+		auto_log_info("Putting on pajamas...", "blue");
+	}
 
 	string to_max = "-tie,adv";
-	if(hippy_stone_broken())
-		to_max += ",0.3fites";
+	if(hippy_stone_broken() && get_property("auto_bedtime_pulls_pvp_multi").to_float() > 0)
+	{
+		to_max += "," +get_property("auto_bedtime_pulls_pvp_multi")+ "fites";
+	}
 	if(auto_have_familiar($familiar[Trick-or-Treating Tot]))
 		to_max += ",switch Trick-or-Treating Tot";
 	if(auto_have_familiar($familiar[Left-Hand Man]))
@@ -591,7 +601,7 @@ void equipRollover()
 
 	maximize(to_max, false);
 
-	if(!in_hardcore())
+	if(!in_hardcore() && !silent)
 	{
 		auto_log_info("Done putting on jammies, if you pulled anything with a rollover effect you might want to make sure it's equipped before you log out.", "red");
 	}

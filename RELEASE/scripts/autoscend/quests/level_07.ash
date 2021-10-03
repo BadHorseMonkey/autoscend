@@ -32,7 +32,10 @@ boolean L7_crypt()
 
 	void useNightmareFuelIfPossible()
 	{
-		if((spleen_left() > 0) && (item_amount($item[Nightmare Fuel]) > 0) && !is_unrestricted($item[Powdered Gold]))
+		//chews this when there are no guaranteed uses for spleen 
+		if((spleen_left() > 0) && (item_amount($item[Nightmare Fuel]) > 0) && !isActuallyEd() && 
+		!(auto_havePillKeeper() && spleen_left() >= 3) && 
+		(spleen_left() > 4*min(auto_spleenFamiliarAdvItemsPossessed(),floor(spleen_left()/4))))	//only uses space than can't be filled with adv item
 		{
 			autoChew(1, $item[Nightmare Fuel]);
 		}
@@ -111,8 +114,13 @@ boolean L7_crypt()
 			handleFamiliar($familiar[Artistic Goth Kid]);
 		}
 		autoEquip($item[Gravy Boat]);
-		knockOffCapePrep();
 
+		//prioritize extinguisher over slay the dead in Defiled Niche if its available and unused in the crypt
+		if(auto_FireExtinguisherCombatString($location[The Defiled Niche]) == "")
+		{
+			knockOffCapePrep();
+		}
+		
 		if(auto_have_familiar($familiar[Space Jellyfish]) && (get_property("_spaceJellyfishDrops").to_int() < 3))
 		{
 			handleFamiliar($familiar[Space Jellyfish]);

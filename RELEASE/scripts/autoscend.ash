@@ -1,4 +1,4 @@
-since r20782;	//min mafia revision needed to run this script. Last update: Initial support for July IotM
+since r25702;	//expose snarfblat zone id via $location[noob cave].id
 /***
 	autoscend_header.ash must be first import
 	All non-accessory scripts must be imported here
@@ -10,13 +10,16 @@ since r20782;	//min mafia revision needed to run this script. Last update: Initi
 
 
 import <autoscend/autoscend_header.ash>
+import <autoscend/combat/auto_combat.ash>		//this file contains its own header. so it needs to be imported early
 import <autoscend/autoscend_migration.ash>
 import <canadv.ash>
 
+import <autoscend/auto_acquire.ash>
 import <autoscend/auto_adventure.ash>
 import <autoscend/auto_bedtime.ash>
 import <autoscend/auto_consume.ash>
 import <autoscend/auto_settings.ash>
+import <autoscend/auto_craft.ash>
 import <autoscend/auto_equipment.ash>
 import <autoscend/auto_familiar.ash>
 import <autoscend/auto_list.ash>
@@ -26,8 +29,6 @@ import <autoscend/auto_restore.ash>
 import <autoscend/auto_util.ash>
 import <autoscend/auto_zlib.ash>
 import <autoscend/auto_zone.ash>
-
-import <autoscend/combat/auto_combat.ash>
 
 import <autoscend/iotms/clan.ash>
 import <autoscend/iotms/elementalPlanes.ash>
@@ -62,6 +63,7 @@ import <autoscend/paths/kingdom_of_exploathing.ash>
 import <autoscend/paths/kolhs.ash>
 import <autoscend/paths/license_to_adventure.ash>
 import <autoscend/paths/live_ascend_repeat.ash>
+import <autoscend/paths/low_key_summer.ash>
 import <autoscend/paths/nuclear_autumn.ash>
 import <autoscend/paths/one_crazy_random_summer.ash>
 import <autoscend/paths/path_of_the_plumber.ash>
@@ -70,7 +72,8 @@ import <autoscend/paths/pocket_familiars.ash>
 import <autoscend/paths/quantum_terrarium.ash>
 import <autoscend/paths/the_source.ash>
 import <autoscend/paths/two_crazy_random_summer.ash>
-import <autoscend/paths/low_key_summer.ash>
+import <autoscend/paths/wildfire.ash>
+
 
 import <autoscend/quests/level_01.ash>
 import <autoscend/quests/level_02.ash>
@@ -114,6 +117,8 @@ void initializeSettings() {
 
 	auto_spoonTuneConfirm();
 
+	icehouseUserErrorProtection();
+
 	string pool = visit_url("questlog.php?which=3");
 	matcher my_pool = create_matcher("a skill level of (\\d+) at shooting pool", pool);
 	if(my_pool.find() && (my_turncount() == 0))
@@ -128,6 +133,7 @@ void initializeSettings() {
 	set_property("auto_banishes", "");
 	set_property("auto_batoomerangDay", 0);
 	set_property("auto_beatenUpCount", 0);
+	remove_property("auto_beatenUpLocations");
 	set_property("auto_getBeehive", false);
 	set_property("auto_bruteForcePalindome", false);
 	set_property("auto_cabinetsencountered", 0);
@@ -148,15 +154,16 @@ void initializeSettings() {
 	set_property("auto_eaten", "");
 	set_property("auto_familiarChoice", "");
 	set_property("auto_forceTavern", false);
+	set_property("auto_freeruns", "");
 	set_property("auto_funTracker", "");
 	set_property("auto_getBoningKnife", false);
 	set_property("auto_getStarKey", true);
-	set_property("auto_getSteelOrgan", get_property("auto_alwaysGetSteelOrgan"));
+	set_property("auto_getSteelOrgan", get_property("auto_getSteelOrgan_initialize"));
 	set_property("auto_gnasirUnlocked", false);
 	set_property("auto_grimstoneFancyOilPainting", true);
 	set_property("auto_grimstoneOrnateDowsingRod", true);
 	set_property("auto_haveoven", false);
-	set_property("auto_doGalaktik", false);
+	set_property("auto_doGalaktik", get_property("auto_doGalaktik_initialize"));
 	set_property("auto_doArmory", false);
 	set_property("auto_doMeatsmith", false);
 	set_property("auto_L8_ninjaAssassinFail", false);
@@ -206,7 +213,7 @@ void initializeSettings() {
 	beehiveConsider();
 
 	eudora_initializeSettings();
-	hr_initializeSettings();
+	heavy_rains_initializeSettings();
 	awol_initializeSettings();
 	theSource_initializeSettings();
 	ed_initializeSettings();
@@ -215,17 +222,18 @@ void initializeSettings() {
 	fallout_initializeSettings();
 	pete_initializeSettings();
 	pokefam_initializeSettings();
-	majora_initializeSettings();
+	disguises_initializeSettings();
 	glover_initializeSettings();
 	bat_initializeSettings();
 	koe_initializeSettings();
 	kolhs_initializeSettings();
-	zelda_initializeSettings();
+	plumber_initializeSettings();
 	lowkey_initializeSettings();
 	bhy_initializeSettings();
 	grey_goo_initializeSettings();
 	qt_initializeSettings();
 	jarlsberg_initializeSettings();
+	wildfire_initializeSettings();
 
 	set_property("auto_doneInitialize", my_ascensions());
 }
@@ -307,7 +315,7 @@ boolean LX_burnDelay()
 
 	// if we're a plumber and we're still stuck doing a flat 15 damage per attack
 	// then a scaling monster is probably going to be a bad time
-	if(in_zelda() && !zelda_canDealScalingDamage())
+	if(in_plumber() && !plumber_canDealScalingDamage())
 	{
 		// unless we can still kill it in one hit, then it should probably be fine?
 		int predictedScalerHP = to_int(0.75 * (my_buffedstat($stat[Muscle]) + monster_level_adjustment()));
@@ -358,21 +366,29 @@ boolean LX_burnDelay()
 }
 
 
-boolean LX_universeFrat()
+boolean LX_calculateTheUniverse()
 {
-	if(my_daycount() >= 2)
+	if(in_wildfire())
 	{
-		if(possessEquipment($item[Beer Helmet]) && possessEquipment($item[Distressed Denim Pants]) && possessEquipment($item[Bejeweled Pledge Pin]))
-		{
-			doNumberology("adventures3");
-		}
-		else if((my_mp() >= mp_cost($skill[Calculate the Universe])) && (doNumberology("battlefield", false) != -1) && adjustForYellowRayIfPossible($monster[War Frat 151st Infantryman]))
-		{
-			doNumberology("battlefield");
-			return true;
-		}
+		return LX_wildfire_calculateTheUniverse();
 	}
-	return false;
+	if(my_mp() < mp_cost($skill[Calculate the Universe]))
+	{
+		return false;
+	}
+	
+	//do we want to summon a [War Frat 151st Infantryman] for the frat warrior outfit?
+	if(!possessOutfit("Frat Warrior Fatigues") && auto_warSide() == "fratboy")
+	{
+		if(doNumberology("battlefield", false) != -1 && adjustForYellowRayIfPossible($monster[War Frat 151st Infantryman]))
+		{
+			return (doNumberology("battlefield") != -1);
+		}
+		return false;	//we want 151 and can get it in general. but not right now. so save it for later
+	}
+	
+	doNumberology("adventures3");
+	return false;	//we do not want to restart the loop as all we're doing is generating 3 adventures
 }
 
 boolean LX_faxing()
@@ -386,160 +402,6 @@ boolean LX_faxing()
 		}
 	}
 	return false;
-}
-
-int pullsNeeded(string data)
-{
-	if(inAftercore())
-	{
-		return 0;
-	}
-	if (isActuallyEd() || auto_my_path() == "Community Service")
-	{
-		return 0;
-	}
-
-	int count = 0;
-	int adv = 0;
-
-	int progress = 0;
-	if(internalQuestStatus("questL13Final") == 4)
-	{
-		progress = 1;
-	}
-	if(internalQuestStatus("questL13Final") == 5)
-	{
-		progress = 2;
-	}
-	if(internalQuestStatus("questL13Final") == 6)
-	{
-		progress = 3;
-	}
-	if(internalQuestStatus("questL13Final") == 11)
-	{
-		progress = 4;
-	}
-	visit_url("campground.php?action=telescopelow");
-
-	if(progress < 1)
-	{
-		int crowd1score = 0;
-		int crowd2score = 0;
-		int crowd3score = 0;
-
-//		Note: Maximizer gives concert White-boy angst, instead of concert 3 (consequently, it doesn\'t work).
-
-		switch(ns_crowd1())
-		{
-		case 1:					crowd1score = initiative_modifier()/40;							break;
-		}
-
-		switch(ns_crowd2())
-		{
-		case $stat[Moxie]:		crowd2score = (my_buffedstat($stat[Moxie]) - 150) / 40;			break;
-		case $stat[Muscle]:		crowd2score = (my_buffedstat($stat[Muscle]) - 150) / 40;		break;
-		case $stat[Mysticality]:crowd2score = (my_buffedstat($stat[Mysticality]) - 150) / 40;	break;
-		}
-
-		switch(ns_crowd3())
-		{
-		case $element[cold]:	crowd3score = numeric_modifier("cold damage") / 9;				break;
-		case $element[hot]:		crowd3score = numeric_modifier("hot damage") / 9;				break;
-		case $element[sleaze]:	crowd3score = numeric_modifier("sleaze damage") / 9;			break;
-		case $element[spooky]:	crowd3score = numeric_modifier("spooky damage") / 9;			break;
-		case $element[stench]:	crowd3score = numeric_modifier("stench damage") / 9;			break;
-		}
-
-		crowd1score = min(max(0, crowd1score), 9);
-		crowd2score = min(max(0, crowd2score), 9);
-		crowd3score = min(max(0, crowd3score), 9);
-		adv = adv + (10 - crowd1score) + (10 - crowd2score) + (10 - crowd3score);
-	}
-
-	if(progress < 2)
-	{
-		ns_hedge1();
-		ns_hedge2();
-		ns_hedge3();
-
-		auto_log_warning("Hedge time of 4 adventures. (Up to 10 without Elemental Resistances)", "red");
-		adv = adv + 4;
-	}
-
-	if(progress < 3)
-	{
-		if((item_amount($item[Richard\'s Star Key]) == 0) && (item_amount($item[Star Chart]) == 0))
-		{
-			auto_log_warning("Need star chart", "red");
-			if((auto_my_path() == "Heavy Rains") && (my_rain() >= 50))
-			{
-				auto_log_info("You should rain man a star chart", "blue");
-			}
-			else
-			{
-				count = count + 1;
-			}
-		}
-
-		if(item_amount($item[Richard\'s Star Key]) == 0)
-		{
-			int stars = item_amount($item[star]);
-			int lines = item_amount($item[line]);
-
-			if(stars < 8)
-			{
-				auto_log_warning("Need " + (8-stars) + " stars.", "red");
-				count = count + (8-stars);
-			}
-			if(lines < 7)
-			{
-				auto_log_warning("Need " + (7-lines) + " lines.", "red");
-				count = count + (7-lines);
-			}
-		}
-
-		if(item_amount($item[Digital Key]) == 0 && whitePixelCount() < 30)
-		{
-			auto_log_warning("Need " + (30-whitePixelCount()) + " white pixels.", "red");
-			count = count + (30 - whitePixelCount());
-		}
-
-		if(item_amount($item[skeleton key]) == 0)
-		{
-			if((item_amount($item[skeleton bone]) > 0) && (item_amount($item[loose teeth]) > 0))
-			{
-				cli_execute("make skeleton key");
-			}
-		}
-		if(item_amount($item[skeleton key]) == 0)
-		{
-			auto_log_warning("Need a skeleton key or the ingredients (skeleton bone, loose teeth) for it.");
-		}
-	}
-
-	if(progress < 4)
-	{
-		adv = adv + 6;
-		if(get_property("auto_wandOfNagamar").to_boolean() && (item_amount($item[Wand Of Nagamar]) == 0) && (cloversAvailable() == 0))
-		{
-			auto_log_warning("Need a wand of nagamar (can be clovered).", "red");
-			count = count + 1;
-		}
-	}
-
-	if(adv > 0)
-	{
-		auto_log_info("Estimated adventure need (tower) is: " + adv + ".", "orange");
-		if(!in_hardcore())
-		{
-			auto_log_info("You need " + count + " pulls.", "orange");
-		}
-	}
-	if(pulls_remaining() > 0)
-	{
-		auto_log_info("You have " + pulls_remaining() + " pulls.", "orange");
-	}
-	return count;
 }
 
 boolean tophatMaker()
@@ -695,7 +557,7 @@ int handlePulls(int day)
 				}
 				else
 				{
-					cli_execute("fold " + $item[Sneaky Pete\'s Leather Jacket (Collar Popped)]);
+					auto_fold($item[Sneaky Pete\'s Leather Jacket (Collar Popped)]);
 				}
 			}
 		}
@@ -720,7 +582,7 @@ int handlePulls(int day)
 		{
 			pullXWhenHaveY($item[over-the-shoulder folder holder], 1, 0);
 		}
-		if((my_primestat() == $stat[Muscle]) && (auto_my_path() != "Heavy Rains"))
+		if((my_primestat() == $stat[Muscle]) && !in_heavyrains())
 		{
 			if((closet_amount($item[Fake Washboard]) == 0) && glover_usable($item[Fake Washboard]))
 			{
@@ -770,7 +632,7 @@ int handlePulls(int day)
 			pullXWhenHaveY($item[hand in glove], 1, 0);
 		}
 
-		if((auto_my_path() != "Heavy Rains") && (auto_my_path() != "License to Adventure") && !($classes[Avatar of Boris, Avatar of Jarlsberg, Avatar of Sneaky Pete, Ed] contains my_class()))
+		if(!in_heavyrains() && (auto_my_path() != "License to Adventure") && !($classes[Avatar of Boris, Avatar of Jarlsberg, Avatar of Sneaky Pete, Ed] contains my_class()))
 		{
 			if(!possessEquipment($item[Snow Suit]) && !possessEquipment($item[Astral Pet Sweater]) && glover_usable($item[Snow Suit]))
 			{
@@ -801,6 +663,8 @@ int handlePulls(int day)
 		{
 			pullXWhenHaveY($item[Replica Bat-oomerang], 1, 0);
 		}
+		
+		pullLegionKnife();
 
 		if(my_class() == $class[Vampyre])
 		{
@@ -867,9 +731,9 @@ boolean LX_doVacation()
 		auto_log_info("I want to vacation but I do not have enough meat", "red");
 		return false;
 	}
-	if(in_zelda())	//avoid error for not having plumber gear equipped.
+	if(in_plumber())	//avoid error for not having plumber gear equipped.
 	{
-		zelda_equipTool($stat[moxie]);
+		plumber_equipTool($stat[moxie]);
 		equipMaximizedGear();
 	}
 
@@ -937,10 +801,10 @@ boolean fortuneCookieEvent()
 			goal = $location[The Haunted Pantry];
 		}
 		
-		if(in_zelda())
+		if(in_plumber())
 		{
 			//prevent plumber crash when it tries to adventure without plumber gear.
-			zelda_equipTool($stat[moxie]);
+			plumber_equipTool($stat[moxie]);
 			equipMaximizedGear();
 		}
 		
@@ -1104,11 +968,20 @@ void initializeDay(int day)
 	pete_initializeDay(day);
 	cs_initializeDay(day);
 	bond_initializeDay(day);
-	pokefam_initializeDay(day);
 	glover_initializeDay(day);
 	bat_initializeDay(day);
 	grey_goo_initializeDay(day);
 	jarlsberg_initializeDay(day);
+
+	// Bulk cache mall prices
+	if(!in_hardcore() && get_property("auto_day_init").to_int() < day)
+	{
+		auto_log_info("Bulk caching mall prices for consumables");
+		mall_prices("food");
+		mall_prices("booze");
+		mall_prices("hprestore");
+		mall_prices("mprestore");
+	}
 
 	if(day == 1)
 	{
@@ -1149,7 +1022,7 @@ void initializeDay(int day)
 
 			tootGetMeat();
 
-			hr_initializeDay(day);
+			heavy_rains_initializeDay(day);
 			// It's nice to have a moxie weapon for Flock of Bats form
 			if(my_class() == $class[Vampyre] && get_property("darkGyfftePoints").to_int() < 21 && !possessEquipment($item[disco ball]))
 			{
@@ -1238,7 +1111,7 @@ void initializeDay(int day)
 				use(1, $item[gym membership card]);
 			}
 
-			hr_initializeDay(day);
+			heavy_rains_initializeDay(day);
 
 			if(!in_hardcore() && (item_amount($item[Handful of Smithereens]) <= 5))
 			{
@@ -1319,6 +1192,11 @@ void initializeDay(int day)
 	}
 
 	set_property("auto_forceNonCombatSource", "");
+
+	// Until KoL fix the utterly stupid bug that requires a manual visit to the fireworks shop
+	// before you can even buy anything from it, we will have to do this.
+	// Why is this so hard? Also why is this even a Clan VIP room item? It's just a shop which charges meat.
+	visit_url("clan_viplounge.php?action=fwshop");
 
 	set_property("auto_day_init", day);
 }
@@ -2101,10 +1979,16 @@ boolean LX_craftAcquireItems()
 		}
 	}
 
-	if((my_meat() > 7500) && (item_amount($item[Seal Tooth]) == 0))
+	if(item_amount($item[Seal Tooth]) == 0)
 	{
-		acquireHermitItem($item[Seal Tooth]);
+		//saucerors want to use sealtooth to delay so that mortar shell delivers final blow for weaksauce MP explosion
+		//TODO: add delaying for mortar for other classes in combat and then remove the sauceror requirement here.
+		if( my_meat() > 7500 || (my_class() == $class[Sauceror] && canUse($skill[Stuffed Mortar Shell])) )
+		{
+			acquireHermitItem($item[Seal Tooth]);
+		}
 	}
+	
 
 	if(my_class() == $class[Turtle Tamer])
 	{
@@ -2319,17 +2203,24 @@ boolean adventureFailureHandler()
 		{
 			tooManyAdventures = false;		//if we do not have iotm powerlevel zones then we are forced to use haunted gallery or bedroom
 		}
+		
+		if(my_adventures() < get_property("_auto_override_tooManyAdv").to_int())
+		{
+			tooManyAdventures = false;		//currently in override for too many adv
+		}
 
 		if(tooManyAdventures)
 		{
 			if(get_property("auto_newbieOverride").to_boolean())
 			{
 				set_property("auto_newbieOverride", false);
+				set_property("_auto_override_tooManyAdv", my_adventures()+5);		//override 5 adv at a time
 				auto_log_warning("We have spent " + place.turns_spent + " turns at '" + place + "' and that is bad... override accepted.", "red");
 			}
 			else
 			{
-				auto_log_critical("You can set auto_newbieOverride = true to bypass this once.", "blue");
+				print("You can bypass this once by executing the gCLI command:", "blue");
+				print("set auto_newbieOverride = true", "blue");
 				abort("We have spent " + place.turns_spent + " turns at '" + place + "' and that is bad... aborting.");
 			}
 		}
@@ -2408,6 +2299,10 @@ boolean autosellCrap()
 	if(can_interact() && my_meat() > 20000)
 	{
 		return false;		//do not autosell stuff in casual or postronin unless you are very poor
+	}
+	if(my_path() == "Way of the Surprising Fist") 
+	{
+		return false;		//selling things in the way of the suprising fist only donates the money to charity, so we should not autosell anything automatically
 	}
 	foreach it in $items[dense meat stack, meat stack, Blue Money Bag, Red Money Bag, White Money Bag]
 	{
@@ -2498,7 +2393,7 @@ void print_header()
 	{
 		auto_log_info("Snow suit usage: " + get_property("_snowSuitCount") + " carrots: " + get_property("_carrotNoseDrops"), "blue");
 	}
-	if(auto_my_path() == "Heavy Rains")
+	if (in_heavyrains())
 	{
 		auto_log_info("Thunder: " + my_thunder() + " Rain: " + my_rain() + " Lightning: " + my_lightning(), "green");
 	}
@@ -2506,7 +2401,7 @@ void print_header()
 	{
 		auto_log_info("Ka Coins: " + item_amount($item[Ka Coin]) + " Lashes used: " + get_property("_edLashCount"), "green");
 	}
-	if (in_zelda())
+	if (in_plumber())
 	{
 		auto_log_info("Coins: " + item_amount($item[Coin]), "green");
 	}
@@ -2688,7 +2583,7 @@ boolean doTasks()
 	awol_buySkills();
 	awol_useStuff();
 	theSource_buySkills();
-	zelda_buyStuff();
+	plumber_buyStuff();
 	jarlsberg_buySkills();
 	boris_buySkills();
 	pete_buySkills();
@@ -2726,7 +2621,6 @@ boolean doTasks()
 	if(LM_jello())						return true;
 	if(LM_fallout())					return true;
 	if(LM_groundhog())					return true;
-	if(LM_majora())						return true;
 	if(LM_batpath()) 					return true;
 	if(doHRSkills())					return true;
 	if(LM_canInteract()) 				return true;
@@ -2754,15 +2648,11 @@ boolean doTasks()
 		}
 	}
 
-
 	if(fortuneCookieEvent())			return true;
 	if(theSource_oracle())				return true;
 	if(LX_theSource())					return true;
 	if(LX_ghostBusting())				return true;
-
-
 	if(witchessFights())					return true;
-	if(my_daycount() != 2)				doNumberology("adventures3");
 
 	//
 	//Adventuring actually starts here.
@@ -2787,22 +2677,14 @@ boolean doTasks()
 	}
 
 	auto_voteSetup(0,0,0);
-
 	auto_setSongboom();
-
 	if(LM_bond())						return true;
-	if(LX_universeFrat())				return true;
-	handleJar();
+	if(LX_calculateTheUniverse())				return true;
 	adventureFailureHandler();
-
 	dna_sorceressTest();
 	dna_generic();
-
-	if(((my_hp() * 5) < my_maxhp()) && (my_mp() > 100))
-	{
-		acquireHP();
-	}
-
+	if(LA_wildfire())					return true;
+	
 	if (process_tasks()) return true;
 
 	auto_log_info("I should not get here more than once because I pretty much just finished all my in-run stuff. Beep", "blue");
@@ -2894,6 +2776,11 @@ void auto_begin()
 	backupSetting("logPreferenceChange", "true");
 	backupSetting("logPreferenceChangeFilter", "maximizerMRUList,testudinalTeachings,auto_maximize_current");
 	backupSetting("maximizerMRUSize", 0); // shuts the maximizer spam up!
+
+	string userForbidden = get_property("forbiddenStores");
+	if (!userForbidden.contains_text("3408540")) {
+		backupSetting("forbiddenStores", userForbidden + ",3408540"); // forbid Dance Police
+	}
 	
 	backupSetting("choiceAdventure1107", 1);
 

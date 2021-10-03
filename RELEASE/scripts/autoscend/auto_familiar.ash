@@ -53,8 +53,6 @@ boolean isAttackFamiliar(familiar fam)
 	//these familiars vary by configuration. TODO actually check their configuration
 	if($familiars[Mini-Crimbot,
 	El Vibrato Megadrone,
-	Reagnimated Gnome,
-	Mini-Adventurer,
 	Reanimated Reanimator,
 	Comma Chameleon,
 	Mad Hatrack,
@@ -62,6 +60,30 @@ boolean isAttackFamiliar(familiar fam)
 	] contains fam)
 	{
 		return true;
+	}
+	if(fam == $familiar[Mini-Adventurer])
+	{
+		int miniAdvClass = get_property("miniAdvClass").to_int();
+		if(miniAdvClass == 1 ||		//seal clubber
+		(miniAdvClass == 2 && my_level() >= 5) ||		//turtle tamer
+		(miniAdvClass == 3 && my_level() >= 15) ||		//pastamancer
+		(miniAdvClass == 4 && my_level() >= 5) ||		//sauceror
+		(miniAdvClass == 5 && my_level() >= 10))		//disco bandit
+		{
+			return true;
+		}
+		return false;
+	}
+	if(fam == $familiar[Reagnimated Gnome])
+	{
+		//can be an attack familiar with this part equipped
+		//todo: is it possible to know if it will be equipped after this check?
+		if(possessEquipment($item[gnomish athlete's foot]))
+		{
+			return true;
+		}
+		//but not if the part is not even owned
+		return false;
 	}
 	
 	if($familiars[Doppelshifter,				//random familiar every fight. can be an attack familiar
@@ -251,8 +273,8 @@ familiar lookupFamiliarDatafile(string type)
 		{
 			if(name != "none")
 			{
-				auto_log_error("lookupFamiliarDatafile failed to convert string [" + name + "] to familiar", "red");
-				auto_log_error(type + "; " + i + "; " + conds, "red");
+				auto_log_error("lookupFamiliarDatafile failed to convert string [" + name + "] to familiar");
+				auto_log_error(type + "; " + i + "; " + conds);
 			}
 			continue;
 		}
@@ -470,22 +492,7 @@ boolean autoChooseFamiliar(location place)
 	//Should take around 10 combats to grab enough on day 1 and on subsequent days you should already have them from previous days.
 	if(famChoice == $familiar[none])
 	{
-		int available_spleen_items_size = 0;
-		foreach it in $items[Agua De Vida, Grim Fairy Tale, Groose Grease, Powdered Gold, Unconscious Collective Dream Jar]
-		{
-			if (auto_is_valid(it))
-			{
-				available_spleen_items_size += 4 * item_amount(it);
-			}
-		}
-		foreach it in $items[beastly paste, bug paste, cosmic paste, oily paste, demonic paste, gooey paste, elemental paste, Crimbo paste, fishy paste, goblin paste, hippy paste, hobo paste, indescribably horrible paste, greasy paste, Mer-kin paste, orc paste, penguin paste, pirate paste, chlorophyll paste, slimy paste, ectoplasmic paste, strange paste]
-		{
-			//count pastes from fairy-worn boots. excepting excessively expensive pastes.
-			if (auto_is_valid(it) && auto_mall_price(it) < 10000 + auto_mall_price($item[gooey paste]))
-			{
-				available_spleen_items_size += 4 * item_amount(it);
-			}
-		}
+		int available_spleen_items_size = 4 * auto_spleenFamiliarAdvItemsPossessed();
 		
 		if(spleen_left() >= (4 + available_spleen_items_size) && haveSpleenFamiliar())
 		{
@@ -864,7 +871,7 @@ void acquireFamiliars()
 	}
 	
 	//Very cheap and very useful IOTM derivative. MP/HP regen. drops lots of useful food and drink early on
-	if(!have_familiar($familiar[Lil\' Barrel Mimic]) && item_amount($item[tiny barrel]) == 0 && is_unrestricted($item[tiny barrel]))
+	if(!have_familiar($familiar[Lil\' Barrel Mimic]) && item_amount($item[tiny barrel]) == 0 && is_unrestricted($item[tiny barrel]) && canPull($item[tiny barrel]))
 	{
 		acquireOrPull($item[tiny barrel]);		//mallbuy and pull it if we can
 	}

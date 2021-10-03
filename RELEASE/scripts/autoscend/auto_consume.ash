@@ -302,6 +302,7 @@ boolean autoEat(int howMany, item toEat, boolean silent)
 	}
 
 	boolean retval = false;
+	boolean wasReadyToEat = false;
 	while(howMany > 0)
 	{
 		buffMaintain($effect[Song of the Glorious Lunch], 10, 1, toEat.fullness);
@@ -309,6 +310,10 @@ boolean autoEat(int howMany, item toEat, boolean silent)
 		{
 			buyUpTo(1, $item[Mayoflex], 1000);
 			use(1, $item[Mayoflex]);
+		}
+		if(have_effect($effect[Ready to Eat]) > 0)
+		{
+			wasReadyToEat = true;
 		}
 		if(silent)
 		{
@@ -320,7 +325,15 @@ boolean autoEat(int howMany, item toEat, boolean silent)
 		}
 		if(retval)
 		{
-			handleTracker(toEat, "auto_eaten");
+			if(wasReadyToEat && have_effect($effect[Ready to Eat]) <= 0)
+			{
+				handleTracker(toEat,"Red Rocketed!", "auto_eaten");
+				wasReadyToEat = false;
+			}
+			else
+			{
+				handleTracker(toEat, "auto_eaten");
+			}		
 		}
 		howMany = howMany - 1;
 	}
@@ -395,7 +408,7 @@ boolean canDrink(item toDrink, boolean checkValidity)
 	{
 		return false;
 	}
-	if (my_class() == $class[Avatar of Jarlsberg])
+	if (my_class() == $class[Avatar of Jarlsberg] && toDrink != $item[Steel Margarita])
 	{
 		return contains_text(craft_type(toDrink), "Jarlsberg's Kitchen");
 	}
@@ -514,11 +527,56 @@ boolean canChew(item toChew)
 	return true;
 }
 
+float consumptionProgress()
+{
+	// returns indicative ratio of adventure organs used
+	
+	// if not allowed to consume then consider maximum progress is already reached
+	if (get_property("auto_limitConsume").to_boolean())
+	{
+		return 1;
+	}
+	
+	int organs_used;
+	int organs_max;
+	
+	if (can_eat())
+	{
+		organs_used += my_fullness();
+		organs_max += fullness_limit();
+	}
+	if (can_drink())
+	{
+		organs_used += my_inebriety();
+		organs_max += inebriety_limit();
+	}
+	
+	// don't consider spleen as a significant adventure organ in most paths
+	if (isActuallyEd() || my_path() == "Oxygenarian")
+	{
+		organs_used += my_spleen_use();
+		organs_max += spleen_limit();
+	}
+	// if(my_path() == "Community Service"), autoscend does try to use spleen for adventures but also for buffs
+	// if(my_path() == "Avatar of Sneaky Pete"), autoscend doesn't try to use molotov soda or create Hate to produce them
+	
+	if (organs_max == 0)
+	{
+		return 1;
+	}
+	else
+	{
+		float used_organ_ratio = min(organs_used / organs_max, 1);
+		return used_organ_ratio;
+	}
+}
+
 void consumeStuff()
 {
-	// grind and eat any sausage that you can
-	auto_sausageGrind(23 - get_property("_sausagesMade").to_int());
-	auto_sausageEatEmUp();
+	if (auto_haveKramcoSausageOMatic())
+	{
+		auto_sausageWanted();
+	}
 
 	if (get_property("auto_limitConsume").to_boolean())
 	{
@@ -584,18 +642,24 @@ void consumeStuff()
 					shouldDrink = true;
 				}
 			}
-			if (shouldDrink && auto_autoConsumeOne("drink", false))
+			if (shouldDrink && auto_autoConsumeOne("drink"))
 			{
 				return;
 			}
 		}
 		if (fullness_left() > 0)
 		{
-			if (auto_autoConsumeOne("eat", false))
+			if (auto_autoConsumeOne("eat"))
 			{
 				return;
 			}
 		}
+	}
+	
+	//if stomach and liver are full and out of adv then chew size 4 iotm derivative spleen items that give 1.875 adv/size.
+	if (auto_chewAdventures())
+	{
+		return;
 	}
 }
 
@@ -659,13 +723,13 @@ boolean consumeFortune()
 	return false;
 }
 
-int SL_ORGAN_STOMACH = 1;
-int SL_ORGAN_LIVER   = 2;
+int AUTO_ORGAN_STOMACH = 1;
+int AUTO_ORGAN_LIVER   = 2;
 
-int SL_OBTAIN_NULL  = 100;
-int SL_OBTAIN_CRAFT = 101;
-int SL_OBTAIN_PULL  = 102;
-int SL_OBTAIN_BUY   = 103;
+int AUTO_OBTAIN_NULL  = 100;
+int AUTO_OBTAIN_CRAFT = 101;
+int AUTO_OBTAIN_PULL  = 102;
+int AUTO_OBTAIN_BUY   = 103;
 
 // Used internally for knapsack optimization.
 record ConsumeAction
@@ -680,32 +744,32 @@ record ConsumeAction
 	float desirability; // adv count that will be used for optimization
 	                    // (lower for pulls, higher for buffs/tower keys)
 
-	int organ;          // SL_ORGAN_*
-	int howToGet;       // SL_OBTAIN_*
+	int organ;          // AUTO_ORGAN_*
+	int howToGet;       // AUTO_OBTAIN_*
 };
 
 string consumable_name(ConsumeAction action)
 {
 	string name = "<name not found>";
 	if (action.it != $item[none]) name = to_string(action.it);
-	else if (action.organ == SL_ORGAN_LIVER) name = cafeDrinkName(action.cafeId);
-	else if (action.organ == SL_ORGAN_STOMACH) name = cafeFoodName(action.cafeId);
+	else if (action.organ == AUTO_ORGAN_LIVER) name = cafeDrinkName(action.cafeId);
+	else if (action.organ == AUTO_ORGAN_STOMACH) name = cafeFoodName(action.cafeId);
 	return name;
 }
 
 string to_pretty_string(ConsumeAction action)
 {
-	string organ_name = action.organ == SL_ORGAN_STOMACH ? "fullness" : "inebriety";
+	string organ_name = action.organ == AUTO_ORGAN_STOMACH ? "fullness" : "inebriety";
 	string logline = consumable_name(action) + " for " + action.adventures + " base adv (" + action.size + " " + organ_name + ")";
-	if (action.howToGet == SL_OBTAIN_PULL)
+	if (action.howToGet == AUTO_OBTAIN_PULL)
 	{
 		logline += " [PULL]";
 	}
-	if (action.howToGet == SL_OBTAIN_CRAFT)
+	if (action.howToGet == AUTO_OBTAIN_CRAFT)
 	{
 		logline += " [CRAFT]";
 	}
-	if (action.howToGet == SL_OBTAIN_BUY)
+	if (action.howToGet == AUTO_OBTAIN_BUY)
 	{
 		logline += " [BUY]";
 	}
@@ -728,34 +792,34 @@ string to_debug_string(ConsumeAction action)
 
 ConsumeAction MakeConsumeAction(item it)
 {
-	int organ = it.inebriety > 0 ? SL_ORGAN_LIVER : SL_ORGAN_STOMACH;
+	int organ = it.inebriety > 0 ? AUTO_ORGAN_LIVER : AUTO_ORGAN_STOMACH;
 	int size = max(it.inebriety, it.fullness);
 	float adv = expectedAdventuresFrom(it);
-	return new ConsumeAction(it, 0, size, adv, adv, organ, SL_OBTAIN_NULL);
+	return new ConsumeAction(it, 0, size, adv, adv, organ, AUTO_OBTAIN_NULL);
 }
 
 boolean autoPrepConsume(ConsumeAction action)
 {
 	auto_log_info(to_debug_string(action));
-	if(action.howToGet == SL_OBTAIN_PULL)
+	if(action.howToGet == AUTO_OBTAIN_PULL)
 	{
 		auto_log_info("autoPrepConsume: Pulling a " + action.it, "blue");
-		action.howToGet = SL_OBTAIN_NULL;
+		action.howToGet = AUTO_OBTAIN_NULL;
 		return pullXWhenHaveY(action.it, 1, item_amount(action.it));
 	}
-	else if(action.howToGet == SL_OBTAIN_CRAFT)
+	else if(action.howToGet == AUTO_OBTAIN_CRAFT)
 	{
 		auto_log_info("autoPrepConsume: Crafting a " + action.it, "blue");
-		action.howToGet = SL_OBTAIN_NULL;
+		action.howToGet = AUTO_OBTAIN_NULL;
 		return create(1, action.it);
 	}
-	else if(action.howToGet == SL_OBTAIN_BUY)
+	else if(action.howToGet == AUTO_OBTAIN_BUY)
 	{
 		auto_log_info("autoPrepConsume: Buying a " + action.it, "blue");
-		action.howToGet = SL_OBTAIN_NULL;
+		action.howToGet = AUTO_OBTAIN_NULL;
 		return buy(1, action.it);
 	}
-	else if (action.howToGet == SL_OBTAIN_NULL)
+	else if (action.howToGet == AUTO_OBTAIN_NULL)
 	{
 		auto_log_info("autoPrepConsume: Doing nothing to get a " + action.it, "blue");
 	}
@@ -764,33 +828,33 @@ boolean autoPrepConsume(ConsumeAction action)
 
 boolean autoConsume(ConsumeAction action)
 {
-	if (action.howToGet != SL_OBTAIN_NULL)
+	if (action.howToGet != AUTO_OBTAIN_NULL)
 	{
 		abort("ConsumeAction not prepped: " + to_debug_string(action));
 	}
 
-	if (action.organ == SL_ORGAN_LIVER)
+	if (action.organ == AUTO_ORGAN_LIVER)
 	{
 		buffMaintain($effect[Ode to Booze], 20, 1, action.size);
 	}
 	if(action.cafeId != 0)
 	{
-		if (action.organ == SL_ORGAN_LIVER)
+		if (action.organ == AUTO_ORGAN_LIVER)
 		{
 			return autoDrinkCafe(1, action.cafeId);
 		}
-		else if (action.organ == SL_ORGAN_STOMACH)
+		else if (action.organ == AUTO_ORGAN_STOMACH)
 		{
 			return autoEatCafe(1, action.cafeId);
 		}
 	}
 	else if(action.it != $item[none])
 	{
-		if (action.organ == SL_ORGAN_LIVER)
+		if (action.organ == AUTO_ORGAN_LIVER)
 		{
 			return autoDrink(1, action.it);
 		}
-		else if (action.organ == SL_ORGAN_STOMACH)
+		else if (action.organ == AUTO_ORGAN_STOMACH)
 		{
 			return autoEat(1, action.it);
 		}
@@ -828,8 +892,8 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 
 	// type is "eat" or "drink"
 	int type  = 0;
-	if (_type == "eat")   type = SL_ORGAN_STOMACH;
-	else if (_type == "drink") type = SL_ORGAN_LIVER;
+	if (_type == "eat")   type = AUTO_ORGAN_STOMACH;
+	else if (_type == "drink") type = AUTO_ORGAN_LIVER;
 	else return false;
 
 	boolean canConsume(item it, boolean checkValidity)
@@ -839,7 +903,7 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 			//workaround for this mafia bug https://kolmafia.us/threads/g-lovers-clip-art-create-function-failure.26007/
 			return false;
 		}
-		return type == SL_ORGAN_STOMACH ? canEat(it, checkValidity) : canDrink(it, checkValidity);
+		return type == AUTO_ORGAN_STOMACH ? canEat(it, checkValidity) : canDrink(it, checkValidity);
 	}
 
 	boolean canConsume(item it)
@@ -849,12 +913,12 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 
 	int organLeft()
 	{
-		return type == SL_ORGAN_STOMACH ? fullness_left() : inebriety_left();
+		return type == AUTO_ORGAN_STOMACH ? fullness_left() : inebriety_left();
 	}
 
 	int organCost(item it)
 	{
-		return type == SL_ORGAN_STOMACH ? it.fullness : it.inebriety;
+		return type == AUTO_ORGAN_STOMACH ? it.fullness : it.inebriety;
 	}
 
 	int[item] pullables;
@@ -981,20 +1045,20 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 		{
 			int n = count(actions);
 			actions[n] = MakeConsumeAction(it);
-			if (obtain_mode == SL_OBTAIN_PULL)
+			if (obtain_mode == AUTO_OBTAIN_PULL)
 			{
 				actions[n].desirability -= 5.0;
 				float user_desirability = get_property("auto_consumePullDesirability").to_float();
 				if (user_desirability > 0.0)
 				{
-					actions[n].desirability -= user_desirability;
+					actions[n].desirability = -user_desirability;
 				}
 			}
-			if (type == SL_ORGAN_STOMACH && auto_is_valid($item[special seasoning]))
+			if (type == AUTO_ORGAN_STOMACH && auto_is_valid($item[special seasoning]))
 			{
 				actions[n].desirability += min(1.0, item_amount($item[special seasoning]).to_float() * it.fullness / fullness_left());
 			}
-			if ((obtain_mode == SL_OBTAIN_PULL) && (i == 0) &&
+			if ((obtain_mode == AUTO_OBTAIN_PULL) && (i == 0) &&
 					((it == $item[Boris\'s key lime pie] && wantBorisPie) ||
 					(it == $item[Jarlsberg\'s key lime pie] && wantJarlsbergPie) ||
 					(it == $item[Sneaky Pete\'s key lime pie] && wantPetePie)))
@@ -1002,7 +1066,7 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 				auto_log_info("If we pulled and ate a " + it + " we could skip getting a fat loot token...");
 				actions[n].desirability += 25;
 			}
-			if (obtain_mode == SL_OBTAIN_NULL)
+			if (obtain_mode == AUTO_OBTAIN_NULL)
 			{
 				if (it == $item[Spaghetti Breakfast])
 				{
@@ -1025,7 +1089,7 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 					}
 				}
 			}
-			if (obtain_mode == SL_OBTAIN_CRAFT)
+			if (obtain_mode == AUTO_OBTAIN_CRAFT)
 			{
 				int turns_to_craft = creatable_turns(it, i + 1, false) - creatable_turns(it, i, false);
 				actions[n].desirability -= turns_to_craft;
@@ -1036,29 +1100,29 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 
 	foreach it, howmany in pullables
 	{
-		add(it, SL_OBTAIN_PULL, howmany);
+		add(it, AUTO_OBTAIN_PULL, howmany);
 	}
 	foreach it, howmany in small_owned
 	{
-		add(it, SL_OBTAIN_NULL, howmany);
+		add(it, AUTO_OBTAIN_NULL, howmany);
 	}
 	foreach it, howmany in buyables
 	{
-		add(it, SL_OBTAIN_BUY, howmany);
+		add(it, AUTO_OBTAIN_BUY, howmany);
 	}
 	foreach it, howmany in large_owned
 	{
-		add(it, SL_OBTAIN_NULL, howmany);
+		add(it, AUTO_OBTAIN_NULL, howmany);
 	}
 	foreach it, howmany in craftables
 	{
-		add(it, SL_OBTAIN_CRAFT, howmany);
+		add(it, AUTO_OBTAIN_CRAFT, howmany);
 	}
 
 	// Now, to load cafe consumables. This has some TCRS-specific code.
 
-	if(type == SL_ORGAN_LIVER && !gnomads_available()) return false;
-	if(type == SL_ORGAN_STOMACH && !canadia_available()) return false;
+	if(type == AUTO_ORGAN_LIVER && !gnomads_available()) return false;
+	if(type == AUTO_ORGAN_STOMACH && !canadia_available()) return false;
 
 	// Add daily special
 	if (daily_special() != $item[none] && canConsume(daily_special(), false)) // specials are always consumable even if they would be restricted as regular consumables.
@@ -1076,7 +1140,7 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 	if(!in_tcrs())
 	{
 		// write in hard-coded adventure values for IPA, the best one
-		if(type == SL_ORGAN_LIVER)
+		if(type == AUTO_ORGAN_LIVER)
 		{
 			// Gnomish Microbrewery has a single best drink
 			int limit = 1 + min(my_meat()/100, inebriety_left()/3);
@@ -1084,10 +1148,10 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 			{
 				int size = 3;
 				float adv = 11.0/3.0;
-				actions[count(actions)] = new ConsumeAction($item[none], -3, size, adv, adv, SL_ORGAN_LIVER, SL_OBTAIN_NULL);
+				actions[count(actions)] = new ConsumeAction($item[none], -3, size, adv, adv, AUTO_ORGAN_LIVER, AUTO_OBTAIN_NULL);
 			}
 		}
-		if(type == SL_ORGAN_STOMACH)
+		if(type == AUTO_ORGAN_STOMACH)
 		{
 			// Chez Snootee does not have a single best food
 
@@ -1097,7 +1161,7 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 			{
 				int size = 3;
 				float adv = 3.5;
-				actions[count(actions)] = new ConsumeAction($item[none], -1, size, adv, adv, SL_ORGAN_LIVER, SL_OBTAIN_NULL);
+				actions[count(actions)] = new ConsumeAction($item[none], -1, size, adv, adv, AUTO_ORGAN_LIVER, AUTO_OBTAIN_NULL);
 			}
 
 			// As Jus Gezund Heit
@@ -1106,7 +1170,7 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 			{
 				int size = 4;
 				float adv = 5.0;
-				actions[count(actions)] = new ConsumeAction($item[none], -2, size, adv, adv, SL_ORGAN_LIVER, SL_OBTAIN_NULL);
+				actions[count(actions)] = new ConsumeAction($item[none], -2, size, adv, adv, AUTO_ORGAN_LIVER, AUTO_OBTAIN_NULL);
 			}
 
 			// As Jus Gezund Heit
@@ -1115,7 +1179,7 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 			{
 				int size = 5;
 				float adv = 7.0;
-				actions[count(actions)] = new ConsumeAction($item[none], -3, size, adv, adv, SL_ORGAN_LIVER, SL_OBTAIN_NULL);
+				actions[count(actions)] = new ConsumeAction($item[none], -3, size, adv, adv, AUTO_ORGAN_LIVER, AUTO_OBTAIN_NULL);
 			}
 		}
 		return true;
@@ -1129,16 +1193,15 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 
 	_CAFE_CONSUMABLE_TYPE [int] cafe_stuff;
 	string filename = "";
-	if (type == SL_ORGAN_LIVER)
+	if (type == AUTO_ORGAN_LIVER)
 		filename = "TCRS_" + my_class().to_string().replace_string(" ", "_") + "_" + my_sign() + "_cafe_booze.txt";
-	else if (type == SL_ORGAN_STOMACH)
+	else if (type == AUTO_ORGAN_STOMACH)
 		filename = "TCRS_" + my_class().to_string().replace_string(" ", "_") + "_" + my_sign() + "_cafe_food.txt";
 
 	auto_log_info("Loading " + filename, "blue");
 	if(!file_to_map(filename, cafe_stuff))
 	{
-		auto_log_error("Something went wrong while trying to load " + filename + ". Maybe run 'tcrs load'?", "red");
-		abort();
+		abort("Something went wrong while trying to load " + filename + ". Maybe run 'tcrs load'?");
 	}
 	foreach i, r in cafe_stuff
 	{
@@ -1150,7 +1213,7 @@ boolean loadConsumables(string _type, ConsumeAction[int] actions)
 			{
 				int size = r.space;
 				float adv = r.space * tcrs_expectedAdvPerFill(r.quality);
-				actions[count(actions)] = new ConsumeAction($item[none], -3, size, adv, adv, SL_ORGAN_LIVER, SL_OBTAIN_NULL);
+				actions[count(actions)] = new ConsumeAction($item[none], -3, size, adv, adv, AUTO_ORGAN_LIVER, AUTO_OBTAIN_NULL);
 			}
 		}
 	}
@@ -1173,7 +1236,20 @@ ConsumeAction auto_bestNightcap()
 	int best = 0;
 	for(int i=1; i < count(actions); i++)
 	{
-		if(desirability(i) > desirability(best)) best = i;
+		if(desirability(i) < desirability(best))
+		{
+			// This consumable is less desirable than the best consumable found so far
+			continue;
+		}
+
+		if(desirability(i) == desirability(best) && historical_price(actions[i].it) >= historical_price(actions[best].it))
+		{
+			// This consumable is just as desirable as the best consumable, but it is more expensive
+			continue;
+		}
+
+		// This consumable is either more desirable or equally desirable and cheaper
+		best = i;
 	}
 
 	return actions[best];
@@ -1223,7 +1299,7 @@ void auto_drinkNightcap()
 	}
 	
 	//fill up remaining liver first. such as stooper space.
-	while(inebriety_left() > 0 && auto_autoConsumeOne("drink", false));
+	while(inebriety_left() > 0 && auto_autoConsumeOne("drink"));
 	
 	//drink your nightcap to become overdrunk
 	ConsumeAction target = auto_bestNightcap();
@@ -1239,7 +1315,7 @@ void auto_drinkNightcap()
 	}
 }
 
-boolean auto_autoConsumeOne(string type, boolean simulate)
+ConsumeAction auto_findBestConsumeAction(string type)
 {
 	int organLeft()
 	{
@@ -1259,7 +1335,7 @@ boolean auto_autoConsumeOne(string type, boolean simulate)
 		abort("Unrecognized organ type: should be 'eat' or 'drink', was " + type);
 		return 0;
 	}
-	if (organLeft() == 0) return false;
+	if (organLeft() == 0) return MakeConsumeAction($item[none]);
 
 	ConsumeAction[int] actions;
 	loadConsumables(type, actions);
@@ -1290,35 +1366,55 @@ boolean auto_autoConsumeOne(string type, boolean simulate)
 		}
 	}
 
-	if (best == -1)
+	if(best == -1)
+	{
+		return MakeConsumeAction($item[none]);
+	}
+	else
+	{
+		return actions[best];
+	}
+}
+
+boolean auto_autoConsumeOne(string type)
+{
+	
+	ConsumeAction bestAction = auto_findBestConsumeAction(type);
+
+	if (bestAction.it == $item[none])
 	{
 		auto_log_info("auto_autoConsumeOne: Nothing found to consume", "blue");
 		return false;
 	}
 
-	auto_log_info("auto_autoConsumeOne: Planning to execute " + type + " " + to_pretty_string(actions[best]), "blue");
+	int best_adv_per_fill = bestAction.adventures / bestAction.size;
+	auto_log_info("auto_autoConsumeOne: Planning to execute " + type + " " + to_pretty_string(bestAction), "blue");
 	if (best_adv_per_fill < get_property("auto_consumeMinAdvPerFill").to_float())
 	{
 		auto_log_warning("auto_autoConsumeOne: Will not consume, min adventures per full " + best_adv_per_fill + " is less than auto_consumeMinAdvPerFill " + get_property("auto_consumeMinAdvPerFill"));
 		return false;
 	}
 
-	if(!simulate)
+	if (!autoPrepConsume(bestAction)) 
 	{
-		if (!autoPrepConsume(actions[best])) return false;
-		return autoConsume(actions[best]);
+		return false;
 	}
-	else
-	{
-		return true;
-	}
+	return autoConsume(bestAction);
+}
+
+// Need separate function to simulate since return type is different
+// For simulation, want to know what would be consumes instead of actually consuming it
+item auto_autoConsumeOneSimulation(string type)
+{
+	ConsumeAction bestAction = auto_findBestConsumeAction(type);
+	return bestAction.it;
 }
 
 boolean auto_knapsackAutoConsume(string type, boolean simulate)
 {
 	// TODO: does not consider mime army shotglass
 
-	if(in_zelda())
+	if(in_plumber())
 	{
 		auto_log_warning("Skipping eating, you'll have to do this manually.", "red");
 		return false;
@@ -1359,7 +1455,7 @@ boolean auto_knapsackAutoConsume(string type, boolean simulate)
 	foreach i in result
 	{
 		string name = consumable_name(actions[i]);
-		if (actions[i].it != $item[none] && actions[i].howToGet != SL_OBTAIN_PULL)
+		if (actions[i].it != $item[none] && actions[i].howToGet != AUTO_OBTAIN_PULL)
 		{
 			normal_consumables[actions[i].it] += 1;
 		}
@@ -1427,6 +1523,80 @@ boolean auto_knapsackAutoConsume(string type, boolean simulate)
 
 	auto_log_info("Expected " + total_adv + " adventures, got " + (my_adventures() - pre_adventures), "blue");
 	return true;
+}
+
+int auto_spleenFamiliarAdvItemsPossessed() 
+{
+	//returns how many size 4 items from spleen familiars in possession
+	
+	int spleenFamiliarAdvItemsCount = 0;
+	
+	foreach it in $items[Unconscious Collective Dream Jar, Grim Fairy Tale, Powdered Gold, Groose Grease, beastly paste, bug paste, cosmic paste, oily paste, demonic paste, gooey paste, elemental paste, Crimbo paste, fishy paste, goblin paste, hippy paste, hobo paste, indescribably horrible paste, greasy paste, Mer-kin paste, orc paste, penguin paste, pirate paste, chlorophyll paste, slimy paste, ectoplasmic paste, strange paste, Agua De Vida]
+	{
+		if(auto_is_valid(it) && mall_price(it) < get_property("autoBuyPriceLimit").to_int())	//even when not mallbuying them we do not want to use exceptionally expensive items
+		{
+			spleenFamiliarAdvItemsCount += item_amount(it);
+		}
+	}
+	
+	return spleenFamiliarAdvItemsCount;
+}
+
+boolean auto_chewAdventures()
+{
+	//tries to chew a size 4 familiar spleen item that gives adventures. All are IOTM derivatives with 1.875 adv/size
+	boolean liver_check = my_inebriety() < inebriety_limit() && !in_kolhs();	//kolhs has special drinking. liver often unfilled
+	if(liver_check || my_fullness() < fullness_limit() || my_adventures() > 1+auto_advToReserve())
+	{
+		return false;	//1.875 A/S is bad. only chew if 1 adv remains
+	}
+	if(isActuallyEd())
+	{
+		return false;	//these consumables are very bad for ed, who has a path specific spleen consumable shop.
+	}
+	if(spleen_left() < 4)
+	{
+		return false;	//they are all size 4
+	}
+	
+	item target = $item[none];
+	int target_value = 0;
+	
+	void chooseCheapestTarget(item it)
+	{
+		if(item_amount(it) > 0 && auto_is_valid(it) &&
+		mall_price(it) < get_property("autoBuyPriceLimit").to_int())	//do not chew very expensive items even if already in inv
+		{
+			if(target == $item[none] || mall_price(it) < target_value)
+			{
+				target = it;
+				target_value = mall_price(it);
+			}
+		}
+	}
+	
+	//first the ones without the level 4 requirement because they give more stats
+	foreach it in $items[Unconscious Collective Dream Jar, Grim Fairy Tale, Powdered Gold, Groose Grease]
+	{
+		chooseCheapestTarget(it);
+	}
+	if(my_level() >= 4 && target == $item[none])
+	{
+		foreach it in $items[beastly paste, bug paste, cosmic paste, oily paste, demonic paste, gooey paste, elemental paste, Crimbo paste, fishy paste, goblin paste, hippy paste, hobo paste, indescribably horrible paste, greasy paste, Mer-kin paste, orc paste, penguin paste, pirate paste, chlorophyll paste, slimy paste, ectoplasmic paste, strange paste, Agua De Vida]
+		{
+			chooseCheapestTarget(it);
+		}
+	}
+	
+	int oldSpleenUse = my_spleen_use();
+	if(target != $item[none])
+	{
+		if(!autoChew(1, target))	//the actual chewing attempt
+		{
+			auto_log_warning("Mysteriously failed to chew [" +target+ "]", "red");
+		}
+	}
+	return oldSpleenUse != my_spleen_use();
 }
 
 boolean auto_breakfastCounterVisit() {

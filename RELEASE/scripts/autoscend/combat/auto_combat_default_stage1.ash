@@ -23,15 +23,19 @@ string auto_combatDefaultStage1(int round, monster enemy, string text)
 	retval = auto_combatBHYStage1(round, enemy, text);
 	if(retval != "") return retval;
 	
-	// Path = disguises delimit
+	// Path = Disguises Delimit
 	retval = auto_combatDisguisesStage1(round, enemy, text);
+	if(retval != "") return retval;
+	
+	// Path = wildfire
+	retval = auto_combatWildfireStage1(round, enemy, text);
 	if(retval != "") return retval;
 	
 	string combatState = get_property("auto_combatHandler");
 	
 	if(enemy == $monster[Your Shadow])
 	{
-		if(in_zelda())
+		if(in_plumber())
 		{
 			if(item_amount($item[super deluxe mushroom]) > 0)
 			{

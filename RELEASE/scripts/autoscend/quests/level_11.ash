@@ -104,12 +104,12 @@ desert_buff_record desertBuffs()
     return dbr;
 }
 
-int shenItemsReturned()
+int shenItemsReturnedOrInProgress()
 {
 	int progress = internalQuestStatus("questL11Shen");
-	if (progress < 3) return 0;
-	if (progress < 5) return 1;
-	else if (progress < 7) return 2;
+	if (progress < 1) return 0;
+	if (progress < 3) return 1;
+	else if (progress < 5) return 2;
 	else return 3;
 }
 
@@ -172,7 +172,7 @@ boolean[location] shenZonesToAvoidBecauseMaybeSnake()
 	if (get_property("shenInitiationDay").to_int() > 0)
 	{
 		int day = get_property("shenInitiationDay").to_int();
-		int items_returned = shenItemsReturned();
+		int items_returned = shenItemsReturnedOrInProgress();
 		return shenSnakeLocations(day, items_returned);
 	}
 	else
@@ -278,9 +278,8 @@ boolean useILoveMeVolI()
 	return false;
 }
 
-boolean LX_unlockHauntedBilliardsRoom(boolean forceDelay) {
-	// forceDelay will force the check for 9 hot res & 9 stench res to be used regardless of what
-	// auto_delayHauntedKitchen is set to.
+boolean LX_unlockHauntedBilliardsRoom(boolean delayKitchen) {
+	// delayKitchen if true will force the check for 9 hot res & 9 stench res to be used
 	if (internalQuestStatus("questM20Necklace") != 0) {
 		return false;
 	}
@@ -293,7 +292,6 @@ boolean LX_unlockHauntedBilliardsRoom(boolean forceDelay) {
 		return false;
 	}
 	
-	boolean delayKitchen = get_property("auto_delayHauntedKitchen").to_boolean() || forceDelay;
 	if (isAboutToPowerlevel()) {
 		// if we're at the point where we need to level up to get more quests other than this, we might as well just do this instead
 		delayKitchen = false;
@@ -326,7 +324,8 @@ boolean LX_unlockHauntedBilliardsRoom(boolean forceDelay) {
 }
 
 boolean LX_unlockHauntedBilliardsRoom() {
-	return LX_unlockHauntedBilliardsRoom(false);
+	//auto_delayHauntedKitchen is a user configurable default state for delaying kitchen until we have 9 hot and 9 stench res.
+	return LX_unlockHauntedBilliardsRoom(get_property("auto_delayHauntedKitchen").to_boolean());
 }
 
 boolean LX_unlockHauntedLibrary()
@@ -384,7 +383,8 @@ boolean LX_unlockHauntedLibrary()
 	}
 	
 	//inebrity handling. do not care if: auto succeed or can't drink or ran out of things to do.
-	if(expectPool < 18 && can_drink() && !isAboutToPowerlevel())
+	boolean wildfire_check = !(in_wildfire() && in_hardcore());		//hardcore wildfire ignore inebriety limits
+	if(expectPool < 18 && can_drink() && !isAboutToPowerlevel() && wildfire_check)
 	{
 		//paths with inebrity limit under 11 should wait until they are at max to do this
 		if(my_inebriety() < inebriety_limit() && inebriety_limit() < 11)
@@ -798,7 +798,7 @@ boolean L11_aridDesert()
 	}
 
 	// Fix broken desert tracking. pocket familiars failing as of r19010. plumber as of r20019
-	if(in_zelda() || in_pokefam())
+	if(in_plumber() || in_pokefam())
 	{
 		visit_url("place.php?whichplace=desertbeach", false);
 	}
@@ -1017,7 +1017,7 @@ boolean L11_aridDesert()
 			visit_url("choice.php?whichchoice=805&option=1&pwd=");
 			if(item_amount($item[Worm-Riding Hooks]) == 0)
 			{
-				auto_log_critical("We messed up in the Desert, get the Worm-Riding Hooks and use them please.");
+				auto_log_error("We messed up in the Desert, get the Worm-Riding Hooks and use them please.");
 				abort("We messed up in the Desert, get the Worm-Riding Hooks and use them please.");
 			}
 			if(item_amount($item[Worm-Riding Manual Page]) >= 15)
@@ -1123,7 +1123,7 @@ boolean L11_wishForBaaBaaBuran()
 	{
 		return false;
 	}
-	if(!get_property("auto_useWishes").to_boolean())
+	if(!auto_shouldUseWishes())
 	{
 		auto_log_warning("Skipping wishing for Baa'baa'bu'ran because auto_useWishes=false", "red");
 	}
@@ -1268,8 +1268,6 @@ boolean L11_hiddenCity()
 		uneffect($effect[Thrice-Cursed]);
 	}
 
-
-
 	if (item_amount($item[Moss-Covered Stone Sphere]) == 0 && internalQuestStatus("questL11Business") < 1)
 	{
 		if(get_counters("Fortune Cookie", 0, 9) == "Fortune Cookie")
@@ -1279,10 +1277,15 @@ boolean L11_hiddenCity()
 	}
 	
 	//can we handle this zone?
-	if(!acquireHP())	//try to restore HP to max.
+	if(!in_pokefam())
 	{
-		return false;		//could not heal HP. we should go do something else first
+		if(!acquireHP())	//try to restore HP to max.
+		{
+			auto_log_warning("Delaying hidden city because we are unable to restore HP");
+			return false;		//could not heal HP. we should go do something else first
+		}
 	}
+	
 	int weapon_ghost_dmg = numeric_modifier("hot damage") + numeric_modifier("cold damage") + numeric_modifier("stench damage") + numeric_modifier("sleaze damage") + numeric_modifier("spooky damage");
 	if(weapon_ghost_dmg < 20 &&				//we can not rely on melee/ranged weapon to kill the ghost
 	!acquireMP(30))							//try getting some MP, relying on a spell to kill them instead. TODO verify we have a spell
@@ -1296,21 +1299,77 @@ boolean L11_hiddenCity()
 		auto_log_info("The idden [sic] apartment!", "blue");
 
 		boolean elevatorAction = ($location[The Hidden Apartment Building].turns_spent > 0 && $location[The Hidden Apartment Building].turns_spent % 8 == 0);
-
-		if(auto_canForceNextNoncombat())
+		
+		boolean canDrinkCursedPunch = canDrink($item[Cursed Punch]) && !get_property("auto_limitConsume").to_boolean() && !in_tcrs();
+		//todo: in_tcrs check quality and size of cursed punch instead of skipping? if that is possible
+		
+		int cursesNeeded = 3;
+		if(have_effect($effect[Once-Cursed]) > 0)
 		{
-			if((my_ascensions() == get_property("hiddenTavernUnlock").to_int() && (inebriety_left() >= 3*$item[Cursed Punch].inebriety) && !in_tcrs())
-				|| (0 != have_effect($effect[Thrice-Cursed]) && $location[The Hidden Apartment Building].turns_spent <= 4))
+			cursesNeeded = 2;
+		}
+		if(have_effect($effect[Twice-Cursed]) > 0)
+		{
+			cursesNeeded = 1;
+		}
+		
+		//able to drink, enough liver?
+		if(canDrinkCursedPunch)
+		{
+			int inebrietyAllowedForPunch = inebriety_left();
+			if(in_quantumTerrarium() && my_familiar() == $familiar[Stooper])
+			{	//in QT the limit is lower or else will be overdrunk when Stooper changes
+				inebrietyAllowedForPunch -= 1;
+			}
+			
+			if(inebrietyAllowedForPunch < cursesNeeded*$item[Cursed Punch].inebriety)
 			{
-				elevatorAction = auto_forceNextNoncombat();
-
-				if(in_pokefam())
+				canDrinkCursedPunch = false;
+			}
+		}
+		
+		if(!elevatorAction && $location[The Hidden Apartment Building].turns_spent <= 4 && auto_canForceNextNoncombat())
+		{
+			//should we try to force the noncombat?
+			boolean shouldForceElevatorAction = false;
+			
+			if(have_effect($effect[Thrice-Cursed]) > 0)
+			{
+				shouldForceElevatorAction = true;
+			}
+			else if(canDrinkCursedPunch)
+			{
+				if(get_property("auto_consumeMinAdvPerFill").to_float() != 0)
 				{
-					if(get_property("relocatePygmyLawyer").to_int() != my_ascensions())
+					//try to respect user setting for cursed punch while there is apartment delay
+					//give it at least +1 adv that it saves fighting a pygmy shaman
+					int advPerFillFromCursedPunch = (expectedAdventuresFrom($item[Cursed Punch]) + 1) / $item[Cursed Punch].inebriety;
+					if(advPerFillFromCursedPunch < get_property("auto_consumeMinAdvPerFill").to_float())
 					{
-						return autoAdv($location[The Hidden Apartment Building]);
+						canDrinkCursedPunch = false;
 					}
 				}
+				
+				//can drink and inebriety allows it
+				if(canDrinkCursedPunch)
+				{
+					boolean canBuyCursedPunch = (my_meat() >= cursesNeeded*500*npcStoreDiscountMulti());
+					
+					if(canBuyCursedPunch)
+					{
+						L11_hiddenTavernUnlock(true);
+
+						if(my_ascensions() == get_property("hiddenTavernUnlock").to_int())
+						{
+							shouldForceElevatorAction = true;
+						}
+					}
+				}
+			}
+			
+			if(shouldForceElevatorAction)
+			{
+				elevatorAction = auto_forceNextNoncombat();
 			}
 		}
 
@@ -1323,15 +1382,19 @@ boolean L11_hiddenCity()
 		{
 			if(have_effect($effect[Thrice-Cursed]) == 0)
 			{
-				L11_hiddenTavernUnlock(true);
-				while(have_effect($effect[Thrice-Cursed]) == 0 && inebriety_left() >= $item[Cursed Punch].inebriety && canDrink($item[Cursed Punch]) && my_ascensions() == get_property("hiddenTavernUnlock").to_int() && !in_tcrs())
+				//can drink and inebriety allows it
+				if(canDrinkCursedPunch)
 				{
-					buyUpTo(1, $item[Cursed Punch]);
-					if(item_amount($item[Cursed Punch]) == 0)
+					L11_hiddenTavernUnlock(true);
+					if(my_ascensions() == get_property("hiddenTavernUnlock").to_int())
 					{
-						abort("Could not acquire Cursed Punch, unable to deal with Hidden Apartment Properly");
+						buyUpTo(cursesNeeded, $item[Cursed Punch]);
+						if(item_amount($item[Cursed Punch]) < cursesNeeded)
+						{
+							abort("Could not acquire Cursed Punch, unable to deal with Hidden Apartment Properly");
+						}
+						autoDrink(cursesNeeded, $item[Cursed Punch]);
 					}
-					autoDrink(1, $item[Cursed Punch]);
 				}
 			}
 			auto_log_info("Hidden Apartment Progress: " + get_property("hiddenApartmentProgress"), "blue");
@@ -1398,7 +1461,7 @@ boolean L11_hiddenCity()
 		{
 			return true;
 		}
-		auto_log_info("The idden osptial!! [sic]", "blue");
+		auto_log_info("The idden [sic] ospital!", "blue");
 
 		autoEquip($item[bloodied surgical dungarees]);
 		autoEquip($item[half-size scalpel]);
@@ -1792,7 +1855,7 @@ boolean L11_redZeppelin()
 
 	if(cloversAvailable() > 0 && get_property("zeppelinProtestors").to_int() < 75)
 	{
-		if(cloversAvailable() >= 3 && get_property("auto_useWishes").to_boolean())
+		if(cloversAvailable() >= 3 && auto_shouldUseWishes())
 		{
 			makeGenieWish($effect[Fifty Ways to Bereave Your Lover]); // +100 sleaze dmg
 			makeGenieWish($effect[Dirty Pear]); // double sleaze dmg
@@ -2292,15 +2355,15 @@ boolean L11_palindome()
 		{
 			if(!get_property("auto_bruteForcePalindome").to_boolean())
 			{
-				auto_log_critical("Palindome failure:", "red");
-				auto_log_critical("You probably just need to get a Mega Gem to fix this.", "red");
+				auto_log_error("Palindome failure:");
+				auto_log_error("You probably just need to get a Mega Gem to fix this.");
 				abort("We have made too much progress in the Palindome and should not be here.");
 			}
 			else
 			{
-				auto_log_critical("We need wet stunt nut stew to get the Mega Gem, but I've been told to get it via the mercy adventure.", "red");
-				auto_log_critical("Set auto_bruteForcePalindome=false to try to get a stunt nut stew", "red");
-				auto_log_critical("(We typically only set this option in hardcore Kingdom of Exploathing, in which the White Forest isn't available)", "red");
+				auto_log_error("We need wet stunt nut stew to get the Mega Gem, but I've been told to get it via the mercy adventure.");
+				auto_log_error("Set auto_bruteForcePalindome=false to try to get a stunt nut stew");
+				auto_log_error("(We typically only set this option in hardcore Kingdom of Exploathing, in which the White Forest isn't available)");
 			}
 		}
 
@@ -2548,7 +2611,7 @@ boolean L11_defeatEd()
 		autoForceEquip($item[low-pressure oxygen tank]);
 	}
 
-	zelda_equipTool($stat[moxie]);
+	plumber_equipTool($stat[moxie]);
 
 	auto_log_info("Time to waste all of Ed's Ka Coins :(", "blue");
 

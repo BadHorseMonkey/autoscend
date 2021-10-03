@@ -287,7 +287,7 @@ boolean L8_getMineOres()
 	}
 	
 	//use 1 wish if we can guarentee it will be enough via cat burglar
-	if(canGenieCombat() && get_property("auto_useWishes").to_boolean() && catBurglarHeistsLeft() > 1)
+	if(canGenieCombat() && auto_shouldUseWishes() && catBurglarHeistsLeft() > 1)
 	{
 		auto_log_info("Trying to wish for a mountain man, which the cat will then burgle, hopefully.");
 		handleFamiliar($familiar[cat burglar]);
@@ -606,6 +606,12 @@ boolean L8_trapperGroar()
 		return true;
 	}
 	
+	if(wildfire_groar_check())
+	{
+		return false;
+	}
+	
+	//we need 5 cold res to be allowed to adventure in [Mist-shrouded Peak]
 	int [element] resGoal;
 	resGoal[$element[cold]] = 5;
 	// try getting resistance without equipment before bothering to change gear
