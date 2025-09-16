@@ -9,7 +9,7 @@ boolean autoAdv(int num, location loc, string option)
 		return false;
 	}
 
-	remove_property("auto_combatHandler");
+	remove_property("_auto_combatState");
 	set_property("auto_diag_round", 0);
 	set_property("nextAdventure", loc);
 	if(option == "")
@@ -17,7 +17,6 @@ boolean autoAdv(int num, location loc, string option)
 		if (isActuallyEd())
 		{
 			option = "auto_edCombatHandler";
-			remove_property("auto_edCombatHandler");
 		} else {
 			option = "auto_combatHandler";
 		}
@@ -61,6 +60,28 @@ boolean autoAdv(location loc, string option)
 	return autoAdv(1, loc, option);
 }
 
+boolean autoLuckyAdv(location loc, boolean override)
+{
+	boolean gotLucky = false;
+	if (cloversAvailable(override) > 0)
+	{
+		cloverUsageInit(override);
+		gotLucky = autoAdv(loc);
+		if (cloverUsageRestart()) 
+		{
+			gotLucky = autoAdv(loc);
+		}
+		cloverUsageFinish();
+	}
+	return gotLucky;
+}
+
+boolean autoLuckyAdv(location loc)
+{
+	// overload to not override clover usage by default as this is the general case
+	return autoLuckyAdv(loc, false);
+}
+
 
 // autoAdvBypass is used to automate adventuring *once* in non-adventure.php zones
 // it will (should?) handle the complete adventure from start to finish regardless of
@@ -77,7 +98,7 @@ boolean autoAdvBypass(int urlGetFlags, string[int] url, location loc, string opt
 	
 	set_property("nextAdventure", loc);
 	cli_execute("auto_pre_adv");
-	remove_property("auto_combatHandler");
+	remove_property("_auto_combatState");
 	set_property("auto_diag_round", 0);
 
 	if(option == "")
@@ -85,7 +106,6 @@ boolean autoAdvBypass(int urlGetFlags, string[int] url, location loc, string opt
 		if (isActuallyEd())
 		{
 			option = "auto_edCombatHandler";
-			remove_property("auto_edCombatHandler");
 		} else {
 			option = "auto_combatHandler";
 		}
@@ -112,15 +132,16 @@ boolean autoAdvBypass(int urlGetFlags, string[int] url, location loc, string opt
 	}
 
 	// handle the initial combat or choice the easy way.
-	string combatPage = "<b>Combat";
-	if (in_pokefam()) {
-		combatPage = "<b>Fight!";
+	string combatPage = ">Combat";
+	if(in_pokefam()) {
+		combatPage = ">Fight!";
 	}
 	if (contains_text(page, combatPage)) {
 		auto_log_info("autoAdvBypass has encountered a combat! (param: '" + option + "')", "green");
 		run_combat(option);
 	} else {
-		auto_log_info("autoAdvBypass has encountered a choice!", "green");
+		int choice_id = last_choice();
+		auto_log_info("autoAdvBypass has encountered a choice: "+choice_id, "green");
 		run_choice(-1);
 	}
 
@@ -132,7 +153,8 @@ boolean autoAdvBypass(int urlGetFlags, string[int] url, location loc, string opt
 			run_combat(option);
 		}
 		if (choice_follows_fight() || handling_choice()) {
-			auto_log_info("autoAdvBypass has encountered a choice!", "green");
+			int choice_id = last_choice();
+			auto_log_info("autoAdvBypass has encountered a choice: "+choice_id, "green");
 			run_choice(-1);
 		}
 	}
@@ -145,6 +167,10 @@ boolean autoAdvBypass(int urlGetFlags, string[int] url, location loc, string opt
 		return false;
 	}
 	if(get_property("lastEncounter") == "Rationing out Destruction")
+	{
+		return false;
+	}
+	if(get_property("lastEncounter") == "Rainy Fax Dreams on your Wedding Day")
 	{
 		return false;
 	}

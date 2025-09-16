@@ -69,14 +69,22 @@ boolean considerGrimstoneGolem(boolean bjornCrown)
 		return false;
 	}
 
-	if((get_property("desertExploration").to_int() >= 70) && (get_property("chasmBridgeProgress").to_int() >= 29))
+	if((get_property("desertExploration").to_int() >= 70) && (get_property("chasmBridgeProgress").to_int() >= (bridgeGoal() - 1)))
 	{
 		return false;
 	}
 
-	if(get_property("chasmBridgeProgress").to_int() >= 29)
+	if(get_property("chasmBridgeProgress").to_int() >= (bridgeGoal() - 1))
 	{
 		if(!get_property("auto_grimstoneOrnateDowsingRod").to_boolean())
+		{
+			return false;
+		}
+		if(!auto_is_valid($item[Grimstone Mask]))
+		{
+			return false;
+		}
+		if(possessEquipment($item[Ornate Dowsing Rod]))
 		{
 			return false;
 		}
@@ -96,10 +104,6 @@ boolean considerGrimstoneGolem(boolean bjornCrown)
 boolean dna_startAcquire()
 {
 	if(!is_unrestricted($item[Little Geneticist DNA-Splicing Lab]))
-	{
-		return false;
-	}
-	if(my_path() == "Community Service")
 	{
 		return false;
 	}
@@ -168,22 +172,13 @@ boolean dna_generic()
 
 	boolean[phylum] potion;
 
-	if(auto_my_path() == "Heavy Rains")
+	if(in_heavyrains())
 	{
 		switch(my_daycount())
 		{
 		case 1:			potion = $phylums[construct, construct, fish];		break;
 		case 2:			potion = $phylums[fish, constellation, dude];		break;
 		case 3:			potion = $phylums[construct, humanoid, dude];		break;
-		default:		potion = $phylums[humanoid, construct, dude];		break;
-		}
-	}
-	else if(auto_my_path() == "Community Service")
-	{
-		switch(my_daycount())
-		{
-		case 1:			potion = $phylums[beast, pirate, elemental];		break;
-		case 2:			potion = $phylums[construct, dude, humanoid];		break;
 		default:		potion = $phylums[humanoid, construct, dude];		break;
 		}
 	}
@@ -294,23 +289,26 @@ boolean LX_ornateDowsingRod(boolean doing_desert_now)
 	{
 		return false;
 	}
-
 	if (get_property("desertExploration").to_int() >= 100 || internalQuestStatus("questL11Desert") > 0)
 	{
 		// don't need a dowsing rod if we've finished the desert.
 		return false;
 	}
-
-	if(!auto_is_valid($item[Grimstone Mask]) || !auto_can_equip($item[Ornate Dowsing Rod]))
+	if(!auto_is_valid($item[Grimstone Mask]))
 	{
-		set_property("auto_grimstoneOrnateDowsingRod", false);	//mask or rod are not valid
+		return false;
+	}
+	if(!auto_can_equip($item[Ornate Dowsing Rod]) && !in_robot())
+	{
 		return false;
 	}
 	if(possessEquipment($item[Ornate Dowsing Rod]))
 	{
-		auto_log_info("Hey, we have the dowsing rod already, yippie!", "blue");
-		set_property("auto_grimstoneOrnateDowsingRod", false);
 		return false;
+	}
+	if(possessEquipment($item[UV-resistant compass]))
+	{
+		return false;		//already chose the other off-hand
 	}
 	if(in_hardcore())		//will we be able to pull at any point in the run. not just right now (we might be out of pulls today)
 	{
@@ -328,13 +326,19 @@ boolean LX_ornateDowsingRod(boolean doing_desert_now)
 	{
 		return false;
 	}
-	if(get_counters("", 0, 6) != "")
-	{
-		return false;	//do not waste a semirare
-	}
 	
 	if(item_amount($item[Grimstone Mask]) == 0 && !canChangeToFamiliar($familiar[Grimstone Golem]) && canPull($item[Grimstone Mask]))
 	{
+		if(canPull($item[Shore Inc. Ship Trip Scrip]) && storage_amount($item[Shore Inc. Ship Trip Scrip]) > 2)
+		{
+			//since drum machine and killing jar get pulled it's not useful to explore faster than compass just to need more fights gathering pages anyway
+			//not worth spending the 5 adv to acquire rod in addition to the pull if Trip Scrip aren't in short supply
+			return false;
+		}
+		// if(canChangeToFamiliar($familiar[Melodramedary]))
+		// {
+		// 	//with Melodramedary, drum machine, killing jar and no Scrip pull, pulling the mask saves 2 turns compared to vacationing for Scrip? is that good enough?
+		// }
 		pullXWhenHaveY($item[Grimstone Mask], 1, 0);		//pull the mask if you do not have it and cannot use the golem
 	}
 	if(item_amount($item[Grimstone Mask]) == 0)
@@ -385,7 +389,6 @@ boolean LX_ornateDowsingRod(boolean doing_desert_now)
 		autoAdv($location[The Prince\'s Restroom]);
 	}
 
-	set_property("auto_grimstoneOrnateDowsingRod", false);	//craft success = we done. fail = we ask user to make it
 	if(create(1, $item[Ornate Dowsing Rod]))
 	{
 		return true;
@@ -404,7 +407,7 @@ boolean LX_ornateDowsingRod()
 
 boolean fancyOilPainting()
 {
-	if(get_property("chasmBridgeProgress").to_int() >= 30)
+	if(get_property("chasmBridgeProgress").to_int() >= bridgeGoal())
 	{
 		return false;
 	}
@@ -429,12 +432,7 @@ boolean fancyOilPainting()
 		return false;
 	}
 	auto_log_info("Acquiring a Fancy Oil Painting!", "blue");
-	set_property("choiceAdventure829", "1");
 	use(1, $item[grimstone mask]);
-	set_property("choiceAdventure823", "1");
-	set_property("choiceAdventure824", "1");
-	set_property("choiceAdventure825", "1");
-	set_property("choiceAdventure826", "1");
 
 	while(item_amount($item[odd silver coin]) < 1)
 	{

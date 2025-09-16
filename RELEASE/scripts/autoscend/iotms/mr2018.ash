@@ -2,7 +2,8 @@
 
 boolean isjanuaryToteAvailable()
 {
-	return item_amount($item[January\'s Garbage Tote]) > 0 && auto_is_valid($item[January\'s Garbage Tote]);
+	item tote = wrap_item($item[January\'s Garbage Tote]);
+	return item_amount(tote) > 0 && auto_is_valid(tote) && !in_bhy();
 }
 
 int januaryToteTurnsLeft(item it)
@@ -104,7 +105,7 @@ boolean januaryToteAcquire(item it)
 
 	if(choice == 2)
 	{
-		if((auto_my_path() == "Way of the Surprising Fist") || in_boris())
+		if(in_wotsf() || is_boris())
 		{
 			return false;
 		}
@@ -129,14 +130,16 @@ boolean januaryToteAcquire(item it)
 		}
 		if(available_amount($item[Makeshift Garbage Shirt]) == 0)		//only rummage a new shirt if we don't already have one on hand.
 		{
-			visit_url("inv_use.php?pwd=" + my_hash() + "&which=3&whichitem=9690", false);	//rummage in your garbage tote
+			item tote = wrap_item($item[January\'s Garbage Tote]);
+			visit_url("inv_use.php?pwd=" + my_hash() + "&which=3&whichitem=" + tote.id, false);	//rummage in your garbage tote
 			run_choice(5);																	//get garbage shirt
 		}
 		visit_url("inv_equip.php?pwd=&which=2&action=equip&whichitem=9699");		//url fail to equip shirt to get a letter
 	}
 	else
 	{
-		visit_url("inv_use.php?pwd=" + my_hash() + "&which=3&whichitem=9690", false);	//rummage in your garbage tote
+		item tote = wrap_item($item[January\'s Garbage Tote]);
+		visit_url("inv_use.php?pwd=" + my_hash() + "&which=3&whichitem=" + tote.id, false);	//rummage in your garbage tote
 		run_choice(choice);																//get desired item
 	}
 	
@@ -220,9 +223,35 @@ boolean fantasyRealmAvailable()
 	return false;
 }
 
+int fantasyBanditsFought()
+{
+	if(contains_text(get_property("_frMonstersKilled"), "fantasy bandit"))
+	{
+		foreach idx, it in split_string(get_property("_frMonstersKilled"), ",")
+		{
+			if(contains_text(it, "fantasy bandit"))
+			{
+				int count = to_int(split_string(it, ":")[1]);
+				return count;
+			}
+		}
+	}
+	return 0;
+}
+
+boolean acquiredFantasyRealmToken()
+{
+	return fantasyBanditsFought() >= 5;
+}
+
 boolean fantasyRealmToken()
 {
 	if(!is_unrestricted($item[FantasyRealm membership packet]))
+	{
+		return false;
+	}
+
+	if(acquiredFantasyRealmToken())
 	{
 		return false;
 	}
@@ -257,23 +286,8 @@ boolean fantasyRealmToken()
 		return false;
 	}
 
-	if(contains_text(get_property("_frMonstersKilled"), "fantasy bandit"))
-	{
-		foreach idx, it in split_string(get_property("_frMonstersKilled"), ",")
-		{
-			if(contains_text(it, "fantasy bandit"))
-			{
-				int count = to_int(split_string(it, ":")[1]);
-				if(count >= 5)
-				{
-					return false;
-				}
-			}
-		}
-	}
-
-	// If we're not allowed to adventure without a familiar due to being in a 100% familiar run.
-	if(is100FamRun())
+	// If we're not allowed to adventure without a familiar due to being in a 100% familiar run or Avant Guard
+	if(is100FamRun() || in_avantGuard())
 	{
 		return false;
 	}
@@ -286,6 +300,21 @@ boolean fantasyRealmToken()
 	//This does not appear to check that we no longer need to adventure there...
 
 	return autoAdv(1, $location[The Bandit Crossroads]);
+}
+
+boolean[location] allFantasyRealmLocations()
+{
+	return $locations[The Bandit Crossroads, The Cursed Village, The Evil Cathedral, The Archwizard's Tower,
+	  The Cursed Village Thieves' Guild, The Towering Mountains, The Foreboding Cave, The Lair of the Phoenix,
+	  The Old Rubee Mine, The Ogre Chieftain's Keep, The Master Thief's Chalet, The Mystic Wood, The Faerie Cyrkle,
+	  The Spider Queen's Lair, The Druidic Campsite, The Ley Nexus, The Putrid Swamp, Near the Witch's House,
+	  The Troll Fortress, The Dragon's Moor, The Sprawling Cemetery, The Labyrinthine Crypt, The Barrow Mounds,
+	  The Ghoul King's Catacomb, Duke Vampire's Chateau];
+}
+
+boolean isFantasyRealm(location loc)
+{
+	return allFantasyRealmLocations() contains loc;
 }
 
 boolean songboomSetting(string goal)
@@ -371,7 +400,12 @@ boolean songboomSetting(int option)
 
 	int boomsLeft = 0;
 	string page = visit_url("inv_use.php?pwd=&which=3&whichitem=9919");
-	matcher boomMatcher = create_matcher("You grab your boombox and select the soundtrack for your life,  which you can do <b>(?:-?)(\\d+)", page);
+
+	// Find the number of songs left by matching the number in the "X more times" sentence. Overly flexible to prevent April Fools word salad breakage.
+	// \\b(\\d+)\\b matches a whole number (\\d+) that's surrounded by word boundaries (\\b), e.g. a space
+	// [^.]* matches any characters except a period (.), any number of times (*), capturing everything up to the end of the sentence
+	// \\. matches the literal ending period to only check the top boombox sentence
+	matcher boomMatcher = create_matcher("\\b(\\d+)\\b[^.]*\\.", page);
 	if(boomMatcher.find())
 	{
 		boomsLeft = to_int(boomMatcher.group(1));
@@ -529,17 +563,7 @@ item[monster] catBurglarHeistDesires()
 			wannaHeists[$monster[white lion]] = $item[lion oil];
 	}
 
-	int twinPeakProgress = get_property("twinPeakProgress").to_int();
-	boolean needStench = ((twinPeakProgress & 1) == 0);
-	boolean needFood = ((twinPeakProgress & 2) == 0);
-	boolean needJar = ((twinPeakProgress & 4) == 0);
-	boolean needInit = (needStench || needFood || needJar || (twinPeakProgress == 7));
-	int neededTrimmers = -item_amount($item[rusty hedge trimmers]);
-	if(needStench) neededTrimmers++;
-	if(needFood) neededTrimmers++;
-	if(needJar) neededTrimmers++;
-	if(needInit) neededTrimmers++;
-	if ((my_level() >= 8) && (catBurglarHeistsLeft() >= 2) && (neededTrimmers > 0))
+	if ((my_level() >= 8) && (catBurglarHeistsLeft() >= 2) && (hedgeTrimmersNeeded() > 0))
 	{
 		wannaHeists[$monster[bearpig topiary animal]] = $item[rusty hedge trimmers];
 		wannaHeists[$monster[elephant (meatcar?) topiary animal]] = $item[rusty hedge trimmers];
@@ -649,6 +673,7 @@ boolean cheeseWarMachine(int stats, int it, int eff, int potion)
 	{
 		return false;
 	}
+	equipStatgainIncreasers(my_primestat(), true);
 	string page = visit_url("inv_use.php?pwd=" + my_hash() + "&which=3&whichitem=9928", false);
 
 	matcher first = create_matcher("/bbatt/barb(\\d).png", page);
@@ -739,7 +764,7 @@ int neverendingPartyRemainingFreeFights()
 		return 0;
 	}
 	//if path randomizes names then the free fights are not free
-	if(auto_my_path() == "Disguises Delimit" || auto_my_path() == "One Crazy Random Summer")
+	if(in_disguises() || in_ocrs())
 	{
 		return 0;
 	}
@@ -768,11 +793,6 @@ boolean neverendingPartyAvailable()
 		// Can't adventure if the quest is complete for the day.
 		return false;
 	}
-	if (get_property("auto_skipNEPOverride").to_boolean())
-	{
-		// if the user says don't use it, don't use it.
-		return false;
-	}
 	return true;
 }
 
@@ -783,10 +803,17 @@ boolean neverendingPartyCombat()
 		return false;
 	}
 
-	fightClubSpa();
+	if(in_glover()) // only non stat effect is valid in G-Lover
+	{
+		fightClubSpa($effect[Flagrantly Fragrant]);
+	}
+	else
+	{
+		fightClubSpa();
+	}
 	//May need to actually have 1 adventure left.
 
-	if (hasTorso() && januaryToteTurnsLeft($item[Makeshift Garbage Shirt]) > 0)
+	if(hasTorso() && januaryToteTurnsLeft($item[Makeshift Garbage Shirt]) > 0 && auto_is_valid($item[Makeshift Garbage Shirt]))
 	{
 		januaryToteAcquire($item[Makeshift Garbage Shirt]);
 		autoEquip($slot[shirt], $item[Makeshift Garbage Shirt]);
@@ -820,7 +847,11 @@ void neverendingPartyChoiceHandler(int choice)
 				buff = $effect[The Best Hair You've Ever Had];
 				break;
 		}
-		if (buff != $effect[none] && have_effect(buff) < 9)
+		if(in_glover()) // Can't use any of the buffs, may as well fight
+		{
+			run_choice(5); // Pick a fight (fight a random monster from the zone)
+		}
+		else if (buff != $effect[none] && have_effect(buff) < 9)
 		{
 			// Get the +mainstat% buff if we don't have enough turns of it to get us to the next scheduled NC.
 			switch (my_primestat())
@@ -851,7 +882,9 @@ void neverendingPartyChoiceHandler(int choice)
 			{
 				run_choice(5); // Pick a fight (fight a random monster from the zone)
 			}
-		} else {
+		}
+		else
+		{
 			run_choice(5); // Pick a fight (fight a random monster from the zone)
 		}
 	}
@@ -894,7 +927,7 @@ void neverendingPartyChoiceHandler(int choice)
 	}
 	else
 	{
-		abort("unhandled choice in mushroomGardenChoiceHandler");
+		abort("unhandled choice in neverendingPartyChoiceHandler");
 	}
 }
 
@@ -915,7 +948,7 @@ string auto_latteDropName(location l)
 		case $location[The Sleazy Back Alley]: return "cloves";
 		case $location[The Haunted Boiler Room]: return "coal";
 		case $location[The Icy Peak]: return "cocoa";
-		case $location[Battlefield (No Uniform)]: return "diet";
+		case $location[The Cola Wars Battlefield]: return "diet";
 		case $location[Itznotyerzitz Mine]: return "dwarf";
 		case $location[The Feeding Chamber]: return "filth";
 		case $location[The Road to the White Citadel]: return "flour";
@@ -1062,7 +1095,7 @@ boolean auto_latteRefill(string want1, string want2, string want3, boolean force
 		return true;
 	}
 
-	if(my_class() == $class[Vampyre])
+	if(in_darkGyffte())
 		tryAddWant("healing");
 
 	if(!haveWant("combat"))
@@ -1167,7 +1200,7 @@ boolean auto_voteSetup(int candidate, int first, int second)
 		return false;
 	}
 
-	if(svn_info("Ezandora-Voting-Booth-trunk-Release").last_changed_rev > 0)
+	if(git_exists("Ezandora-Voting-Booth"))
 	{
 		cli_execute("VotingBooth.ash");
 		return true;
@@ -1200,60 +1233,53 @@ boolean auto_voteMonster()
 
 boolean auto_voteMonster(boolean freeMon)
 {
-	return auto_voteMonster(freeMon, $location[none], "");
+	return auto_voteMonster(freeMon, $location[none]);
 }
 
 boolean auto_voteMonster(boolean freeMon, location loc)
 {
-	return auto_voteMonster(freeMon, loc, "");
-}
-
-boolean auto_voteMonster(boolean freeMon, location loc, string option)
-{
-	if(!auto_haveVotingBooth())
+	if (!auto_haveVotingBooth())
 	{
 		return false;
 	}
-	if(get_property("_voteModifier") == "")
+	if (get_property("_voteModifier") == "")
 	{
 		return false;
 	}
 
 	//Some things override this, like a semi-rare?
 
-	if(get_property("lastVoteMonsterTurn").to_int() >= total_turns_played())
+	if (get_property("lastVoteMonsterTurn").to_int() >= total_turns_played())
 	{
 		return false;
 	}
-	if((total_turns_played() % 11) != 1)
+	if ((total_turns_played() % 11) != 1)
 	{
 		return false;
 	}
 	// is_unrestricted instead of auto_is_valid as the monsters can be encountered in g-lover
-	if(!possessEquipment($item[&quot;I voted!&quot; sticker]) || !is_unrestricted($item[&quot;I voted!&quot; sticker]))
+	if (!possessEquipment($item[&quot;I voted!&quot; sticker]) || !is_unrestricted($item[&quot;I voted!&quot; sticker]))
 	{
 		return false;
 	}
 
-	if(freeMon && (get_property("_voteFreeFights").to_int() >= 3))
+	if (freeMon && (get_property("_voteFreeFights").to_int() >= 3))
 	{
 		return false;
 	}
 
-	if(loc == $location[none])
+	if (loc == $location[none])
 	{
 		return true;
 	}
 
-	if(!have_equipped($item[&quot;I voted!&quot; sticker]))
+	if (autoEquip($slot[acc3], $item[&quot;I voted!&quot; sticker]))
 	{
-		if(item_amount($item[&quot;I voted!&quot; sticker]) == 0)
-		{
-			return false;
-		}
-		autoEquip($slot[acc3], $item[&quot;I voted!&quot; sticker]);
+		set_property("auto_nextEncounter", get_property("_voteMonster"));
+		return autoAdv(loc);
 	}
-	return autoAdv(1, loc, option);
+	set_property("auto_nextEncounter","");
+	return false;
 }
 
 boolean fightClubNap()
@@ -1291,7 +1317,7 @@ boolean fightClubSpa()
 {
 	int option = 4;
 	stat st = my_primestat();
-	if (in_plumber())
+	if(in_plumber())
 	{
 		// We deal 250% of our Moxie, so if our Muscle is too high we... die.
 		st = $stat[moxie];

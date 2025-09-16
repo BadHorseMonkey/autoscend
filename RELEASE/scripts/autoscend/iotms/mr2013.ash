@@ -1,20 +1,5 @@
 #	This is meant for items that have a date of 2013
 
-void handleJar()
-{
-	if(item_amount($item[psychoanalytic jar]) > 0)
-	{
-		if(item_amount($item[jar of psychoses (The Crackpot Mystic)]) == 0)
-		{
-			visit_url("shop.php?whichshop=mystic&action=jung&whichperson=mystic", true);
-		}
-		else
-		{
-			put_closet(1, $item[psychoanalytic jar]);
-		}
-	}
-}
-
 void makeStartingSmiths()
 {
 	if(!auto_have_skill($skill[Summon Smithsness]))
@@ -33,7 +18,7 @@ void makeStartingSmiths()
 
 	if(knoll_available())
 	{
-		buyUpTo(1, $item[maiden wig]);
+		auto_buyUpTo(1, $item[maiden wig]);
 	}
 
 	switch(my_class())
@@ -45,14 +30,14 @@ void makeStartingSmiths()
 		}
 		if(!possessEquipment($item[Vicar\'s Tutu]) && (item_amount($item[Lump of Brituminous Coal]) > 0) && knoll_available())
 		{
-			buy(1, $item[Frilly Skirt]);
+			auto_buyUpTo(1, $item[Frilly Skirt]);
 			autoCraft("smith", 1, $item[Lump of Brituminous Coal], $item[Frilly Skirt]);
 		}
 		break;
 	case $class[Turtle Tamer]:
 		if(!possessEquipment($item[Work is a Four Letter Sword]))
 		{
-			buyUpTo(1, $item[Sword Hilt]);
+			auto_buyUpTo(1, $item[Sword Hilt]);
 			autoCraft("smith", 1, $item[lump of Brituminous coal], $item[sword hilt]);
 		}
 		if(!possessEquipment($item[Ouija Board\, Ouija Board]))
@@ -132,62 +117,14 @@ void oldPeoplePlantStuff()
 	{
 		return;
 	}
-
-	if(my_path() == "Community Service")
+	boolean addml = true;
+	if((monster_level_adjustment() > get_property("auto_MLSafetyLimit").to_int() && get_property("auto_MLSafetyLimit") != "") || get_property("auto_MLSafetyLimit").to_int() == -1)
 	{
-		if(my_location() == $location[The Velvet / Gold Mine])
-		{
-			cli_execute("florist plant horn of plenty");
-			cli_execute("florist plant max headshroom");
-			cli_execute("florist plant foul toadstool");
-		}
-		else if(my_location() == $location[The Secret Government Laboratory])
-		{
-			cli_execute("florist plant pitcher plant");
-			cli_execute("florist plant spider plant");
-			cli_execute("florist plant stealing magnolia");
-		}
-		else if(my_location() == $location[The Bubblin\' Caldera])
-		{
-			cli_execute("florist plant seltzer watercress");
-			cli_execute("florist plant lettuce spray");
-			cli_execute("florist plant skunk cabbage");
-		}
-		else if(my_location() == $location[The Skeleton Store])
-		{
-			cli_execute("florist plant canned spinach");
-			cli_execute("florist plant aloe guv'nor");
-		}
-		else if(my_location() == $location[LavaCo&trade; Lamp Factory])
-		{
-			cli_execute("florist plant impatiens");
-			cli_execute("florist plant red fern");
-			cli_execute("florist plant bamboo!");
-		}
-		else if(my_location() == $location[8-bit realm])
-		{
-			cli_execute("florist plant rad-ish radish");
-			cli_execute("florist plant smoke-ra");
-			cli_execute("florist plant deadly cinnamon");
-		}
-		else if(my_location() == $location[Uncle Gator\'s Country Fun-Time Liquid Waste Sluice])
-		{
-			cli_execute("florist plant war lily");
-			cli_execute("florist plant arctic moss");
-		}
-		else if(my_location() == $location[The Deep Machine Tunnels])
-		{
-			cli_execute("florist plant blustery puffball");
-			cli_execute("florist plant dis lichen");
-			cli_execute("florist plant loose morels");
-		}
-		else if((my_location() == $location[The X-32-F Combat Training Snowman]) && (my_daycount() == 2))
-		{
-			cli_execute("florist plant canned spinach");
-			cli_execute("florist plant red fern");
-			cli_execute("florist plant spider plant");
-		}
-		return;
+		addml = false;
+	}
+	if(is_professor())
+	{
+		addml = false;
 	}
 
 	if((my_location() == $location[The Outskirts of Cobb\'s Knob]))
@@ -203,7 +140,9 @@ void oldPeoplePlantStuff()
 	}
 	else if((my_location() == $location[The Haunted Bathroom]))
 	{
-		cli_execute("florist plant war lily");
+		if(addml){
+			cli_execute("florist plant war lily");
+		}
 		cli_execute("florist plant Impatiens");
 		cli_execute("florist plant arctic moss");
 	}
@@ -227,10 +166,12 @@ void oldPeoplePlantStuff()
 	}
 	else if((my_location() == $location[The Obligatory Pirate\'s Cove]))
 	{
-		cli_execute("florist plant rabid dogwood");
+		if(addml){
+			cli_execute("florist plant rabid dogwood");
+		}
 		cli_execute("florist plant artichoker");
 	}
-	else if((my_location() == $location[Barrrney\'s Barrr]) && (my_class() != $class[Ed]))
+	else if((my_location() == $location[Barrrney\'s Barrr]) && (my_class() != $class[Ed the Undying]))
 	{
 		cli_execute("florist plant spider plant");
 		cli_execute("florist plant red fern");
@@ -244,7 +185,9 @@ void oldPeoplePlantStuff()
 	}
 	else if((my_location() == $location[The Castle in the Clouds in the Sky (Basement)]) && (my_daycount() == 1))
 	{
-		cli_execute("florist plant blustery puffball");
+		if(addml){
+			cli_execute("florist plant blustery puffball");
+		}
 		cli_execute("florist plant dis lichen");
 		cli_execute("florist plant max headshroom");
 	}
@@ -254,13 +197,17 @@ void oldPeoplePlantStuff()
 	}
 	else if((my_location() == $location[Oil Peak]))
 	{
-		cli_execute("florist plant rabid dogwood");
+		if(addml){
+			cli_execute("florist plant rabid dogwood");
+		}
 		cli_execute("florist plant artichoker");
 		cli_execute("florist plant celery stalker");
 	}
 	else if((my_location() == $location[The Haunted Boiler Room]))
 	{
-		cli_execute("florist plant war lily");
+		if(addml){
+			cli_execute("florist plant war lily");
+		}
 		cli_execute("florist plant red fern");
 		cli_execute("florist plant arctic moss");
 	}
@@ -295,7 +242,9 @@ void oldPeoplePlantStuff()
 	}
 	else if((my_location() == $location[The Upper Chamber]))
 	{
-		cli_execute("florist plant Blustery Puffball");
+		if(addml){
+			cli_execute("florist plant Blustery Puffball");
+		}
 		cli_execute("florist plant Loose Morels");
 		cli_execute("florist plant Foul Toadstool");
 	}
@@ -316,7 +265,7 @@ void oldPeoplePlantStuff()
 		cli_execute("florist plant Pitcher Plant");
 		cli_execute("florist plant Canned Spinach");
 	}
-	else if((my_location() == $location[Hippy Camp]) && (my_daycount() == 1))
+	else if((my_location() == $location[The Hippy Camp]) && (my_daycount() == 1))
 	{
 		cli_execute("florist plant Seltzer Watercress");
 		cli_execute("florist plant Rad-ish Radish");

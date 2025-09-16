@@ -1,5 +1,6 @@
 record desert_buff_record
 {
+	item weapon;
 	item offhand;
 	item fam_equip;
 	familiar fam;
@@ -12,19 +13,23 @@ desert_buff_record desertBuffs()
 
     dbr.progress = 1;
 
-	boolean possessUnrestricted(item it)
-	{
-		return possessEquipment(it) && is_unrestricted(it);
-	}
-
 	boolean compassValid = possessUnrestricted($item[UV-resistant compass]);
 	boolean lhmValid = canChangeToFamiliar($familiar[Left-Hand Man]);
 	boolean meloValid = canChangeToFamiliar($familiar[Melodramedary]);
 	boolean odrValid = possessUnrestricted($item[Ornate Dowsing Rod]);
+	boolean knifeValid = possessUnrestricted($item[Survival Knife]);
 
 	dbr.fam = $familiar[none];
 	dbr.fam_equip = $item[none];
 	dbr.offhand = $item[none];
+	dbr.weapon = $item[none];
+
+	// No contention for weapon so always use survival knife if we have it
+	if(knifeValid)
+	{
+		dbr.weapon = $item[Survival Knife];
+		dbr.progress += 2;
+	}
 
 	// If we can't use the Ornate dowsing rod
 	if (!odrValid)
@@ -140,7 +145,7 @@ boolean[location] shenSnakeLocations(int day, int n_items_returned)
 	boolean[location] frattle   = $locations[The Smut Orc Logging Camp];
 	boolean[location] snakleton = $locations[The Unquiet Garves, The VERY Unquiet Garves];
 
-	if (in_koe())
+	if(in_koe())
 	{
 		return union(ten_heads, frattle, frozen);
 	}
@@ -164,11 +169,6 @@ boolean[location] shenSnakeLocations(int day, int n_items_returned)
 
 boolean[location] shenZonesToAvoidBecauseMaybeSnake()
 {
-	if (!allowSoftblockShen())
-	{
-		boolean[location] empty;
-		return empty;
-	}
 	if (get_property("shenInitiationDay").to_int() > 0)
 	{
 		int day = get_property("shenInitiationDay").to_int();
@@ -181,8 +181,9 @@ boolean[location] shenZonesToAvoidBecauseMaybeSnake()
 		boolean[location] zones_to_avoid;
 		if (my_level() < 11)
 		{
-
-			for (int day=0; day<3; day++)
+			//if level 10, assume shen today or tomorrow, otherwise up to two days from now
+			int beforeThatDay = (my_level() >= 10) ? 2 : 3;
+			for (int day=0; day<beforeThatDay; day++)
 			{
 				foreach z, _ in shenSnakeLocations(day+my_daycount(), 0)
 				{
@@ -194,11 +195,20 @@ boolean[location] shenZonesToAvoidBecauseMaybeSnake()
 		else
 		{
 			// if we're already level 11, well either be starting ASAP
-			// or leaving it until day 2 if we're on day 1
-			foreach z, _ in shenSnakeLocations(max(2, my_daycount()), 0)
+			foreach z, _ in shenSnakeLocations(my_daycount(), 0)
 			{
 				zones_to_avoid[z] = true;
 			}
+		}
+		// if ran out of stuff to do and need to get enchanted bean for L10 quest, don't delay for bat snake
+		if(internalQuestStatus("questL10Garbage") == 0 && get_property("auto_delayLastLevel").to_int() == 10 && item_amount($item[enchanted bean]) == 0)
+		{
+			zones_to_avoid[$location[The Batrat and Ratbat Burrow]] = false;
+		}
+		// don't delay Hole in the Sky in WereProf if ran out of stuff to do
+		if(get_property("auto_powerLevelLastAttempted").to_int() == my_turncount() && in_wereprof())
+		{
+			zones_to_avoid[$location[The Hole in the Sky]] = false;
 		}
 		return zones_to_avoid;
 	}
@@ -206,7 +216,7 @@ boolean[location] shenZonesToAvoidBecauseMaybeSnake()
 
 boolean shenShouldDelayZone(location loc)
 {
-	return shenZonesToAvoidBecauseMaybeSnake() contains loc;
+	return shenZonesToAvoidBecauseMaybeSnake()[loc];
 }
 
 int[location] getShenZonesTurnsSpent()
@@ -228,7 +238,7 @@ int[location] getShenZonesTurnsSpent()
 boolean LX_unlockHiddenTemple() {
 	// replaces L2_treeCoin(),  L2_spookyMap(),  L2_spookyFertilizer() & L2_spookySapling()
 
-	if (in_glover()) {
+	if(in_glover()) {
 		// Spooky Temple map ain't nuthin' but a 'G' Thang.
 		return false;
 	}
@@ -301,7 +311,7 @@ boolean LX_unlockHauntedBilliardsRoom(boolean delayKitchen) {
 		resGoals[$element[hot]] = 9;
 		resGoals[$element[stench]] = 9;
 		// check to see if we can acquire sufficient hot and stench res for the kitchen
-		int [element] resPossible = provideResistances(resGoals, true, true);
+		int [element] resPossible = provideResistances(resGoals, $location[The Haunted Kitchen], true, false, true);
 		delayKitchen = (resPossible[$element[hot]] < 9 || resPossible[$element[stench]] < 9);
 	}
 
@@ -314,7 +324,7 @@ boolean LX_unlockHauntedBilliardsRoom(boolean delayKitchen) {
 		int [element] resGoal;
 		resGoal[$element[hot]] = 9;
 		resGoal[$element[stench]] = 9;
-		int [element] resPossible = provideResistances(resGoal, true, false);
+		int [element] resPossible = provideResistances(resGoal, $location[The Haunted Kitchen], true, true, false);
 		auto_log_info("Looking for the Billards Room key (Hot/Stench:" + resPossible[$element[hot]] + "/" + resPossible[$element[stench]] + "): Progress " + get_property("manorDrawerCount") + "/24", "blue");
 		if (autoAdv($location[The Haunted Kitchen])) {
 			return true;
@@ -324,8 +334,7 @@ boolean LX_unlockHauntedBilliardsRoom(boolean delayKitchen) {
 }
 
 boolean LX_unlockHauntedBilliardsRoom() {
-	//auto_delayHauntedKitchen is a user configurable default state for delaying kitchen until we have 9 hot and 9 stench res.
-	return LX_unlockHauntedBilliardsRoom(get_property("auto_delayHauntedKitchen").to_boolean());
+	return LX_unlockHauntedBilliardsRoom(true);
 }
 
 boolean LX_unlockHauntedLibrary()
@@ -346,7 +355,7 @@ boolean LX_unlockHauntedLibrary()
 	item EdStaffOfFats = $item[7964];	//ed path version of staff of fats. +5 pool
 	item EdStaffOfEd = $item[7961];		//ed path version of staff of ed. +5 pool
 	
-	if(in_boris())
+	if(is_boris())
 	{
 		auto_log_info("Boris cannot equip a pool cue.", "blue");
 	}
@@ -382,6 +391,21 @@ boolean LX_unlockHauntedLibrary()
 		}
 	}
 	
+	if (in_small() && my_inebriety() < inebriety_limit() && my_level() > 10)
+	{
+		// in small we should have astral pilsners assuming the user knows what they are doing
+		// so just drink one if we can get the max adventures out of it
+		ConsumeAction bestDrinkAction = auto_findBestConsumeAction("drink");
+		if (bestDrinkAction.it == $item[astral pilsner])
+		{
+			auto_autoConsumeOne(bestDrinkAction);
+		}
+		else
+		{
+			auto_log_info("You didn't take astral pilsners or you're somehow on day 4 of Small. Make better life choices.");
+		}
+	}
+
 	//inebrity handling. do not care if: auto succeed or can't drink or ran out of things to do.
 	boolean wildfire_check = !(in_wildfire() && in_hardcore());		//hardcore wildfire ignore inebriety limits
 	if(expectPool < 18 && can_drink() && !isAboutToPowerlevel() && wildfire_check)
@@ -409,12 +433,18 @@ boolean LX_unlockHauntedLibrary()
 	}
 	
 	//+3 pool skill & +1 training gains. speculative_pool_skill() already assumed we would use it if we can.
-	buffMaintain($effect[Chalky Hand], 0, 1, 1);
+	buffMaintain($effect[Chalky Hand]);
 
 	if (internalQuestStatus("questM20Necklace") == 2)
 	{
 		// only force after we get the pool cue NC.
-		auto_forceNextNoncombat();
+		boolean NCForced = auto_forceNextNoncombat($location[The Haunted Billiards Room]);
+		// delay if we are out of NC forcers and haven't run out of things to do
+		if(!NCForced && my_daycount() < get_property("auto_runDayCount").to_int() && !isAboutToPowerlevel())
+		{
+			resetMaximize();	//cancel equipping pool cue
+			return false;
+		}
 	}
 	auto_log_info("It's billiards time!", "blue");
 	return autoAdv($location[The Haunted Billiards Room]);
@@ -422,6 +452,14 @@ boolean LX_unlockHauntedLibrary()
 
 boolean LX_unlockManorSecondFloor() {
 	if (internalQuestStatus("questM20Necklace") < 3 || internalQuestStatus("questM20Necklace") > 4) {
+		return false;
+	}
+
+	//No sense in trying to go to the library if constructs (writing desk) are banished and we already have a killing jar and haven't done the desert yet
+	if (is_banished($phylum[construct]) && get_property("screechCombats").to_int() > 0 &&
+	(item_amount($item[killing jar]) > 0 && ((get_property("gnasirProgress").to_int() & 4) != 4)))
+	{
+		set_property("screechDelay", "construct");
 		return false;
 	}
 
@@ -445,10 +483,25 @@ boolean LX_unlockManorSecondFloor() {
 
 	auto_log_info("Well, we need writing desks", "blue");
 	auto_log_info("Going to the library!", "blue");
-	if (canSniff($monster[Writing Desk], $location[The Haunted Library]) && auto_mapTheMonsters())
+	if(get_property("writingDesksDefeated").to_int() <= 3 || get_property("nosyNoseMonster").to_monster() == $monster[Writing Desk])
 	{
-		auto_log_info("Attemping to use Map the Monsters to olfact a writing desk.");
+		// nose sniff is weak so probably want fairy familiar first. this condition should change if banshee librarian is added as a YR target for killing jar
+		if((item_amount($item[killing jar]) > 0 || is_banished($monster[banshee librarian])) && 
+		auto_have_familiar($familiar[Nosy Nose]) && auto_is_valid($skill[Get a Good Whiff of This Guy]) && 
+		auto_combat_appearance_rates($location[The Haunted Library])[$monster[Writing Desk]] < 100)
+		{
+			handleFamiliar($familiar[Nosy Nose]);
+		}
 	}
+	if(get_property("writingDesksDefeated").to_int() <= 3)
+	{
+		if (canSniff($monster[Writing Desk], $location[The Haunted Library]) && auto_mapTheMonsters())
+		{
+			auto_log_info("Attemping to use Map the Monsters to olfact a writing desk.");
+		}
+	}
+
+	auto_getCitizenZone($location[The Haunted Library]); //since want to adventure in the Haunted Library anyway
 	return autoAdv($location[The Haunted Library]);
 }
 
@@ -474,13 +527,98 @@ boolean LX_danceWithLadySpookyraven() {
 
 	auto_log_info("Finished Spookyraven, just dancing with the lady.", "blue");
 	if (autoAdv($location[The Haunted Ballroom])) {
-		if (in_lowkeysummer()) {
+		if(in_lowkeysummer()) {
 			// need to open the Haunted Nursery for the music box key.
 			visit_url("place.php?whichplace=manor3&action=manor3_ladys");
 		}
 		return true;
 	}
 	return false;
+}
+
+void hauntedBedroomChoiceHandler(int choice, string[int] options)
+{
+	if(choice == 876) // One Simple Nightstand (The Haunted Bedroom)
+	{
+		if(my_meat() < 1000 + meatReserve() && auto_is_valid($item[old leather wallet]) && !in_wotsf())
+		{
+			run_choice(1); // get old leather wallet worth ~500 meat
+		}
+		else if(item_amount($item[ghost key]) > 0 && my_primestat() == $stat[muscle] && my_buffedstat($stat[muscle]) < 150)
+		{
+			run_choice(3); // spend 1 ghost key for primestat, get ~200 muscle XP
+		}
+		else
+		{
+			run_choice(2); // get min(200,muscle) of muscle XP
+		}
+	}
+	else if(choice == 877) // One Mahogany Nightstand (The Haunted Bedroom)
+	{
+		run_choice(1); // get half of a memo or old coin purse
+	}
+	else if(choice == 878) // One Ornate Nightstand (The Haunted Bedroom)
+	{
+		boolean needSpectacles = !possessEquipment($item[Lord Spookyraven\'s Spectacles]) && internalQuestStatus("questL11Manor") < 2;
+		if(is_boris() || in_wotsf() || (in_nuclear() && in_hardcore()))
+		{
+			needSpectacles = false;
+		}
+		if(needSpectacles)
+		{
+			run_choice(3); // get Lord Spookyraven's spectacles
+		}
+		else if(item_amount($item[disposable instant camera]) == 0 && internalQuestStatus("questL11Palindome") < 1)
+		{
+			run_choice(4); // get disposable instant camera
+		}
+		else if(my_primestat() != $stat[mysticality] || my_meat() < 1000 + meatReserve())
+		{
+			run_choice(1); // get ~500 meat
+		}
+		else if(item_amount($item[ghost key]) > 0 && my_primestat() == $stat[mysticality] && my_buffedstat($stat[mysticality]) < 150)
+		{
+			run_choice(5); // spend 1 ghost key for primestat, get ~200 mysticality XP
+		}
+		else
+		{
+			run_choice(2); // get min(200,mys) of mys XP
+		}
+	}
+	else if(choice == 879) // One Rustic Nightstand (The Haunted Bedroom)
+	{
+		if(options contains 4)
+		{
+			run_choice(4); // only shows up rarely. still worth ~1 mil in mall
+		}
+		if(in_bhy() && item_amount($item[Antique Hand Mirror]) < 1)
+		{
+			run_choice(3); // fight the remains of a jilted mistress for the antique hand mirror
+		}
+		else if(item_amount($item[ghost key]) > 0 && my_primestat() == $stat[moxie] && my_buffedstat($stat[moxie]) < 150)
+		{
+			run_choice(5); // spend 1 ghost key for primestat, get ~200 moxie XP
+		}
+		else
+		{
+			run_choice(1); // get moxie substats
+		}
+	}
+	else if(choice == 880) // One Elegant Nightstand (The Haunted Bedroom)
+	{
+		if(internalQuestStatus("questM21Dance") < 2 && item_amount($item[Lady Spookyraven\'s Finest Gown]) == 0)
+		{
+			run_choice(1); // get Lady Spookyraven's Gown
+		}
+		else
+		{
+			run_choice(2); // get elegant nightstick
+		}
+	}
+	else
+	{
+		abort("unhandled choice in hauntedBedroomChoiceHandler");
+	}
 }
 
 boolean LX_getLadySpookyravensFinestGown() {
@@ -490,15 +628,36 @@ boolean LX_getLadySpookyravensFinestGown() {
 	// Elegant animated nightstand has a delay of 6(?) adventures.
 	// TODO: add a check for delay burning?
 	// Might not be worth it since we need to fight ornate nightstands for the spectacles and camera
+	boolean needSpectacles = !possessEquipment($item[Lord Spookyraven\'s Spectacles]) && internalQuestStatus("questL11Manor") < 2;
+	boolean needCamera = (item_amount($item[disposable instant camera]) == 0 && internalQuestStatus("questL11Palindome") < 1);
+	if (is_boris() || in_wotsf() || (in_nuclear() && in_hardcore())) {
+		needSpectacles = false;
+	}
+	if (in_pokefam()) {
+		needCamera = false;
+	}
+	if(needCamera && needSpectacles) {
+		// if in a path that needs both you want a two night stand with ornate, olfacting ornate nightstand is a problem
+		// for the script because it will work against the elegant nightstand and most olfaction skills aren't cancelled
+		// easily without changing locations, but Nosy Nose will be turned off once it's no longer the used familiar
+		if(auto_have_familiar($familiar[Nosy Nose]) && auto_is_valid($skill[Get a Good Whiff of This Guy]) && !is100FamRun())
+		{
+			float ornateRate = auto_combat_appearance_rates($location[The Haunted Bedroom])[$monster[animated ornate nightstand]];
+			float elegantRate = auto_combat_appearance_rates($location[The Haunted Bedroom])[$monster[elegant animated nightstand]];
+			if($location[The Haunted Bedroom].turns_spent < 6 && elegantRate != 0)
+			{	//non 0 value for elegant before 7 is spurious
+				ornateRate += elegantRate;	//not a real rate but only correct for the purpose of checking if it is 100
+			}
+			if(ornateRate < 99.9)
+			{
+				handleFamiliar($familiar[Nosy Nose]);
+			}
+		}
+	}
+
 	if (item_amount($item[Lady Spookyraven\'s Finest Gown]) > 0) {
 		// got the Bedroom item but we might still need items for other parts
 		// of the macguffin quest if we got unlucky
-		boolean needSpectacles = (item_amount($item[Lord Spookyraven\'s Spectacles]) == 0 && internalQuestStatus("questL11Manor") < 2);
-		boolean needCamera = (item_amount($item[disposable instant camera]) == 0 && internalQuestStatus("questL11Palindome") < 1);
-		if (in_boris() || auto_my_path() == "Way of the Surprising Fist" || (auto_my_path() == "Nuclear Autumn" && in_hardcore())) {
-			needSpectacles = false;
-		}
-
 		if(!needSpectacles && !needCamera) {
 			return false;
 		}
@@ -557,7 +716,9 @@ boolean LX_getLadySpookyravensPowderPuff() {
 	auto_sourceTerminalEducate($skill[Extract], $skill[Portscan]);
 
 	if (!zone_delay($location[The Haunted Bathroom])._boolean) {
-		auto_forceNextNoncombat();
+		boolean NCForced = auto_forceNextNoncombat($location[The Haunted Bathroom]);
+		// delay if we are out of NC forcers and haven't run out of things to do
+		if(!NCForced && my_daycount() < get_property("auto_runDayCount").to_int() && !isAboutToPowerlevel()) return false;
 	}
 	if (autoAdv($location[The Haunted Bathroom])) {
 		return true;
@@ -576,6 +737,86 @@ boolean LX_spookyravenManorSecondFloor()
 	return false;
 }
 
+void blackForestChoiceHandler(int choice)
+{
+	if(choice == 923) // All Over the Map (The Black Forest)
+	{
+		if(available_choice_options() contains 5) // only available with Candy Cane Sword Cane equipped
+		{
+			run_choice(5); // +8 exploration
+			run_choice(1); // go to You Found Your Thrill (#924)
+		}
+		else
+		{
+			run_choice(1); // go to You Found Your Thrill (#924)
+		}
+	}
+	else if(choice == 924)
+	{
+		if(get_property("auto_getBeehive").to_boolean() && my_adventures() > 3)
+		{
+			run_choice(3); // go to Bee Persistent (#1018)
+		}
+		else if(!possessEquipment($item[Blackberry Galoshes]) && item_amount($item[Blackberry]) >= 3 && !in_darkGyffte())
+		{
+			run_choice(2); // go to The Blackberry Cobbler (#928)
+		}
+		else
+		{
+			run_choice(1); // Attack the bushes (fight blackberry bush)
+		}
+	}
+	else if(choice == 925) // The Blackest Smith (The Black Forest)
+	{
+		run_choice(5); // skip
+	}
+	else if(choice == 926) // Be Mine (The Black Forest)
+	{
+		run_choice(4); // skip
+	}
+	else if(choice == 927) // Sunday Black Sunday (The Black Forest)
+	{
+		run_choice(3); // skip
+	}
+	else if(choice == 928)
+	{
+		if(!possessEquipment($item[Blackberry Galoshes]) && item_amount($item[Blackberry]) >= 3 && !in_darkGyffte())
+		{
+			run_choice(4); // get Blackberry Galoshes
+		}
+		else
+		{
+			run_choice(5); // skip
+		}
+	}
+	else if(choice == 1018) // Bee Persistent (The Black Forest)
+	{
+		if(get_property("auto_getBeehive").to_boolean() && my_adventures() > 2)
+		{
+			run_choice(1); // go to Bee Rewarded (#1019)
+		}
+		else
+		{
+			run_choice(2); // skip
+		}
+	}
+	else if(choice == 1019) // Bee Rewarded (The Black Forest)
+	{
+		if(get_property("auto_getBeehive").to_boolean())
+		{
+			run_choice(1); // get the beehive
+		}
+		else
+		{
+			run_choice(2); // skip
+		}
+	}
+	else
+	{
+		abort("unhandled choice in blackForestChoiceHandler");
+	}
+}
+
 boolean L11_blackMarket()
 {
 	if (internalQuestStatus("questL11Black") < 0 || internalQuestStatus("questL11Black") > 1 || black_market_available())
@@ -587,7 +828,23 @@ boolean L11_blackMarket()
 		return false;
 	}
 
-	if($location[The Black Forest].turns_spent > 12)
+	if (is_banished($phylum[beast]) && get_property("screechCombats").to_int() > 0)
+	{
+		set_property("screechDelay", "beast");
+		return false; // Can't get the reassembled blackbird if beasts are banished
+	}
+	
+	if(in_quantumTerrarium())
+	{
+		//swap to the blackbird or crow if we can
+		if(!($familiars[Reassembled Blackbird, Reconstituted Crow] contains my_familiar()))
+		{
+			qt_FamiliarSwap($familiar[Reassembled Blackbird]);
+			qt_FamiliarSwap($familiar[Reconstituted Crow]);
+		}
+	}
+
+	if ($location[The Black Forest].turns_spent > 12 && !in_avantGuard())
 	{
 		auto_log_warning("We have spent a bit many adventures in The Black Forest... manually checking", "red");
 		visit_url("place.php?whichplace=woods");
@@ -602,9 +859,10 @@ boolean L11_blackMarket()
 	if (internalQuestStatus("questL11Black") == 0 && item_amount($item[black map]) == 0)
 	{
 		council();
-		if (!possessEquipment($item[Blackberry Galoshes]) && auto_can_equip($item[Blackberry Galoshes]))
+		item galoshes = $item[Blackberry Galoshes];
+		if (!possessEquipment(galoshes) && auto_can_equip(galoshes) && canPull(galoshes))
 		{
-			pullXWhenHaveY($item[blackberry galoshes], 1, 0);
+			pullXWhenHaveY(galoshes, 1, 0);
 		}
 	}
 
@@ -619,6 +877,11 @@ boolean L11_blackMarket()
 	if (get_property("auto_getBeehive").to_boolean() && my_adventures() < 3) {
 		return false;
 	}
+	if(item_amount($item[Reassembled Blackbird]) > 0 && auto_haveGreyGoose() && !possessEquipment($item[Blackberry Galoshes]) && item_amount($item[Blackberry]) < 2 && !in_darkGyffte()){
+		auto_log_info("Bringing the Grey Goose to emit some drones at a blackberry bush.");
+		handleFamiliar($familiar[Grey Goose]);
+	}
+
 	boolean advSpent = autoAdv($location[The Black Forest]);
 	//For people with autoCraft set to false for some reason
 	if(item_amount($item[Reassembled Blackbird]) == 0 && creatable_amount($item[Reassembled Blackbird]) > 0)
@@ -646,7 +909,9 @@ boolean L11_getBeehive()
 
 	auto_log_info("Must find a beehive!", "blue");
 
-	auto_forceNextNoncombat();
+	boolean NCForced = auto_forceNextNoncombat($location[The Black Forest]);
+	// delay if we are out of NC forcers and haven't run out of things to do
+	if(!NCForced && my_daycount() < get_property("auto_runDayCount").to_int() && !isAboutToPowerlevel()) return false;
 	boolean advSpent = autoAdv($location[The Black Forest]);
 	if(item_amount($item[beehive]) > 0)
 	{
@@ -665,7 +930,7 @@ boolean L11_forgedDocuments()
 	{
 		return false;
 	}
-	if (my_meat() < npc_price($item[Forged Identification Documents]))
+	if (!in_wotsf() && my_meat() < npc_price($item[Forged Identification Documents]))
 	{
 		if(isAboutToPowerlevel())
 		{
@@ -675,7 +940,7 @@ boolean L11_forgedDocuments()
 	}
 
 	auto_log_info("Getting the McMuffin Book", "blue");
-	if(auto_my_path() == "Way of the Surprising Fist")
+	if(in_wotsf())
 	{
 		// TODO: move this to WotSF path file if one is ever created.
 		string[int] pages;
@@ -683,7 +948,11 @@ boolean L11_forgedDocuments()
 		pages[1] = "shop.php?whichshop=blackmarket&action=fightbmguy";
 		return autoAdvBypass(0, pages, $location[Noob Cave], "");
 	}
-	buyUpTo(1, $item[Forged Identification Documents]);
+	if(is_werewolf())
+	{
+		return false; // can't access shops as a werewolf
+	}
+	auto_buyUpTo(1, $item[Forged Identification Documents]);
 	if(item_amount($item[Forged Identification Documents]) > 0)
 	{
 		return true;
@@ -698,7 +967,11 @@ boolean L11_mcmuffinDiary()
 	{
 		return false;
 	}
-	if (in_koe() && item_amount($item[Forged Identification Documents]) > 0)
+	if(is_werewolf())
+	{
+		return false; //can't access stores as werewolf which includes the shore
+	}
+	if(in_koe() && item_amount($item[Forged Identification Documents]) > 0)
 	{
 		council(); // Shore doesn't exist in Exploathing so we acquire diary from the council
 	}
@@ -722,7 +995,9 @@ boolean L11_mcmuffinDiary()
 	}
 
 	auto_log_info("Getting the McMuffin Diary", "blue");
+	set_property("auto_considerCCSCShore", false);
 	LX_doVacation();
+	set_property("auto_considerCCSCShore", true);
 	foreach diary in $items[Your Father\'s Macguffin Diary, Copy of a Jerk Adventurer\'s Father\'s Diary]
 	{
 		if(item_amount(diary) > 0)
@@ -737,7 +1012,7 @@ boolean L11_mcmuffinDiary()
 void auto_visit_gnasir()
 {
 	//Visits gnasir, can change based on path
-	if (in_koe())
+	if(in_koe())
 	{
 		visit_url("place.php?whichplace=exploathing_beach&action=expl_gnasir");
 	}
@@ -766,6 +1041,10 @@ boolean L11_getUVCompass()
 	{
 		return false;		//impossible to get compass in this path. [The Shore, Inc] is unavailable
 	}
+	if(is_werewolf())
+	{
+		return false; // can't access shore as a werewolf
+	}
 
 	pullXWhenHaveY($item[Shore Inc. Ship Trip Scrip], 1, 0);
 	if(item_amount($item[Shore Inc. Ship Trip Scrip]) == 0)
@@ -790,6 +1069,15 @@ boolean L11_getUVCompass()
 	return false;
 }
 
+boolean L11_hasUltrahydrated()
+{
+	if (have_effect($effect[Ultrahydrated]) > 0 && internalQuestStatus("questL11Desert") < 1)
+	{
+		return true;
+	}
+	return false;
+}
+
 boolean L11_aridDesert()
 {
 	if(internalQuestStatus("questL11Desert") != 0)
@@ -806,14 +1094,35 @@ boolean L11_aridDesert()
 	{
 		return false;		//done exploring
 	}
+
+	if (auto_haveMaydayContract() && my_daycount() < 2 && !isAboutToPowerlevel() && auto_is_valid($item[survival knife]))
+	{ // if we can get (and use) the survival knife on day 2 and we're on day 1, lets delay until day 2
+		// unless we have absolutely nothing else to do.
+		// hardcode the paths & classes we know will get the survival knife on day 2 until mafia
+		// exposes functions to either allow us to calculate seeds ourselves or just tell us what we will get.
+		if (in_small() && $classes[Turtle Tamer, Sauceror] contains my_class())
+		{
+			return false;
+		}
+		if (my_path() == $path[Standard] && my_class() == $class[Pastamancer])
+		{
+			return false;
+		}
+	}
 	
 	if(LX_ornateDowsingRod(true)) return true;		//spend adv trying to get [Ornate Dowsing Rod]. doing_desert_now = true.
 	if(L11_getUVCompass()) return true;				//spend adv trying to get [UV-resistant compass]
-
+	if(robot_delay("desert"))
+	{
+		return false;	//delay for You, Robot path
+	}
+	if(item_amount($item[milestone]) > 0) //use milestone if we got one from the rock garden
+	{
+		use(1, $item[milestone]);
+	}
+	
 	desert_buff_record dbr = desertBuffs();
-
 	int progress = dbr.progress;
-
 	if(get_property("bondDesert").to_boolean())
 	{
 		progress += 2;
@@ -823,129 +1132,24 @@ boolean L11_aridDesert()
 		progress += 2;
 	}
 
-	if((have_effect($effect[Ultrahydrated]) > 0) || (get_property("desertExploration").to_int() == 0))
+	if(get_property("auto_gnasirUnlocked").to_boolean())
 	{
-		auto_log_info("Searching for the pyramid", "blue");
-		if(auto_my_path() == "Heavy Rains")
-		{
-			autoEquip($item[Thor\'s Pliers]);
-		}
-
-		if(possessEquipment($item[reinforced beaded headband]) && possessEquipment($item[bullet-proof corduroys]) && possessEquipment($item[round purple sunglasses]))
-		{
-			foreach it in $items[Beer Helmet, Distressed Denim Pants, Bejeweled Pledge Pin]
-			{
-				take_closet(closet_amount(it), it);
-			}
-		}
-
-		buyUpTo(1, $item[hair spray]);
-		buffMaintain($effect[Butt-Rock Hair], 0, 1, 1);
-		if(my_primestat() == $stat[Muscle])
-		{
-			buyUpTo(1, $item[Ben-Gal&trade; Balm]);
-			buffMaintain($effect[Go Get \'Em, Tiger!], 0, 1, 1);
-			buyUpTo(1, $item[Blood of the Wereseal]);
-			buffMaintain($effect[Temporary Lycanthropy], 0, 1, 1);
-		}
-
-		if(my_mp() > 30 && my_hp() < (my_maxhp()*0.5))
-		{
-			acquireHP();
-		}
-
-		if((in_hardcore() || (pulls_remaining() == 0)) && (item_amount($item[Worm-Riding Hooks]) > 0) && (get_property("desertExploration").to_int() <= (100 - (5 * progress))) && ((get_property("gnasirProgress").to_int() & 16) != 16) && (item_amount($item[Stone Rose]) == 0))
-		{
-			if(item_amount($item[Drum Machine]) > 0)
-			{
-				auto_log_info("Found the drums, now we use them!", "blue");
-				use(1, $item[Drum Machine]);
-			}
-			else
-			{
-				auto_log_info("Off to find the drums!", "blue");
-				autoAdv(1, $location[The Oasis]);
-			}
+		if (LX_spookyravenManorFirstFloor())
+		{ // make sure we've actually done the Haunted Library before we want to hand in a killing jar
 			return true;
 		}
 
-		if(((get_property("gnasirProgress").to_int() & 1) != 1))
-		{
-			int expectedOasisTurns = 8 - $location[The Oasis].turns_spent;
-			int equivProgress = expectedOasisTurns * progress;
-			int need = 100 - get_property("desertExploration").to_int();
-			auto_log_info("expectedOasis: " + expectedOasisTurns, "brown");
-			auto_log_info("equivProgress: " + equivProgress, "brown");
-			auto_log_info("need: " + need, "brown");
-			if((need <= 15) && (15 >= equivProgress) && (item_amount($item[Stone Rose]) == 0))
-			{
-				auto_log_info("It seems raisinable to hunt a Stone Rose. Beep", "blue");
-				autoAdv(1, $location[The Oasis]);
-				return true;
-			}
-		}
-
-		if (dbr.fam != $familiar[none])
-		{
-			handleFamiliar(dbr.fam);
-		}
-		if (dbr.offhand != $item[none])
-		{
-			autoEquip($slot[off-hand], dbr.offhand);
-		}
-		if (dbr.fam_equip != $item[none])
-		{
-			autoEquip($slot[familiar], dbr.fam_equip);
-		}
-		set_property("choiceAdventure805", 1);
-		int need = 100 - get_property("desertExploration").to_int();
-		auto_log_info("Need for desert: " + need, "blue");
-		auto_log_info("Worm riding: " + item_amount($item[Worm-Riding Manual Page]), "blue");
-
-		if(!get_property("auto_gnasirUnlocked").to_boolean() && ($location[The Arid\, Extra-Dry Desert].turns_spent > 10) && (get_property("desertExploration").to_int() > 10))
-		{
-			auto_log_info("Did not appear to notice that Gnasir unlocked, assuming so at this point.", "green");
-			set_property("auto_gnasirUnlocked", true);
-		}
-
-		if(get_property("auto_gnasirUnlocked").to_boolean() && (item_amount($item[Stone Rose]) > 0) && ((get_property("gnasirProgress").to_int() & 1) != 1))
-		{
-			auto_log_info("Returning the stone rose", "blue");
-			auto_visit_gnasir();
-			visit_url("choice.php?whichchoice=805&option=1&pwd=");
-			visit_url("choice.php?whichchoice=805&option=2&pwd=");
-			visit_url("choice.php?whichchoice=805&option=1&pwd=");
-			if(item_amount($item[Desert Sightseeing Pamphlet]) == 0)
-			{
-				cli_execute("refresh inv");
-				if(item_amount($item[Desert Sightseeing Pamphlet]) == 0)
-				{
-					abort("Returned stone rose but did not return stone rose.");
-				}
-				else
-				{
-					if((get_property("gnasirProgress").to_int() & 1) != 1)
-					{
-						auto_log_warning("Mafia did not track gnasir Stone Rose (0x1). Fixing.", "red");
-						set_property("gnasirProgress", get_property("gnasirProgress").to_int() | 1);
-					}
-				}
-			}
-			use(1, $item[desert sightseeing pamphlet]);
-			return true;
-		}
-
-		if(get_property("auto_gnasirUnlocked").to_boolean() && ((get_property("gnasirProgress").to_int() & 2) != 2))
+		if((get_property("gnasirProgress").to_int() & 2) != 2)
 		{
 			boolean canBuyPaint = true;
-			if((auto_my_path() == "Way of the Surprising Fist") || (auto_my_path() == "Nuclear Autumn"))
+			if(in_wotsf() || in_nuclear() || is_werewolf())
 			{
 				canBuyPaint = false;
 			}
 
 			if((item_amount($item[Can of Black Paint]) > 0) || ((my_meat() >= npc_price($item[Can of Black Paint])) && canBuyPaint))
 			{
-				buyUpTo(1, $item[Can of Black Paint]);
+				auto_buyUpTo(1, $item[Can of Black Paint]);
 				auto_log_info("Returning the Can of Black Paint", "blue");
 				auto_visit_gnasir();
 				visit_url("choice.php?whichchoice=805&option=1&pwd=");
@@ -981,7 +1185,7 @@ boolean L11_aridDesert()
 			}
 		}
 
-		if(get_property("auto_gnasirUnlocked").to_boolean() && (item_amount($item[Killing Jar]) > 0) && ((get_property("gnasirProgress").to_int() & 4) != 4))
+		if((item_amount($item[Killing Jar]) > 0) && ((get_property("gnasirProgress").to_int() & 4) != 4))
 		{
 			auto_log_info("Returning the killing jar", "blue");
 			auto_visit_gnasir();
@@ -1033,10 +1237,13 @@ boolean L11_aridDesert()
 			return true;
 		}
 
-		need = 100 - get_property("desertExploration").to_int();
 		if((item_amount($item[Worm-Riding Hooks]) > 0) && ((get_property("gnasirProgress").to_int() & 16) != 16))
 		{
 			pullXWhenHaveY($item[Drum Machine], 1, 0);
+			if(item_amount($item[Drum Machine]) == 0)
+			{
+				auto_makeMonkeyPawWish($item[Drum Machine]);
+			}
 			if(item_amount($item[Drum Machine]) > 0)
 			{
 				auto_log_info("Drum machine desert time!", "blue");
@@ -1045,9 +1252,8 @@ boolean L11_aridDesert()
 			}
 		}
 
-		need = 100 - get_property("desertExploration").to_int();
 		# If we have done the Worm-Riding Hooks or the Killing jar, don\'t do this.
-		if((need <= 15) && ((get_property("gnasirProgress").to_int() & 12) == 0))
+		if((100 - get_property("desertExploration").to_int() <= 15) && ((get_property("gnasirProgress").to_int() & 12) == 0))
 		{
 			pullXWhenHaveY($item[Killing Jar], 1, 0);
 			if(item_amount($item[Killing Jar]) > 0)
@@ -1062,7 +1268,7 @@ boolean L11_aridDesert()
 					cli_execute("refresh inv");
 					if(item_amount($item[Desert Sightseeing Pamphlet]) == 0)
 					{
-						abort("Returned killing jar (secondard) but did not return killing jar.");
+						abort("Returned killing jar (secondary) but did not return killing jar.");
 					}
 					else
 					{
@@ -1076,6 +1282,130 @@ boolean L11_aridDesert()
 				use(1, $item[desert sightseeing pamphlet]);
 				return true;
 			}
+		}
+	}
+
+	if((have_effect($effect[Ultrahydrated]) > 0) || (get_property("desertExploration").to_int() == 0))
+	{
+		auto_log_info("Searching for the pyramid", "blue");
+		if(in_heavyrains())
+		{
+			autoEquip($item[Thor\'s Pliers]);
+		}
+
+		if(possessEquipment($item[reinforced beaded headband]) && possessEquipment($item[bullet-proof corduroys]) && possessEquipment($item[round purple sunglasses]))
+		{
+			foreach it in $items[Beer Helmet, Distressed Denim Pants, Bejeweled Pledge Pin]
+			{
+				take_closet(closet_amount(it), it);
+			}
+		}
+
+		auto_buyUpTo(1, $item[hair spray]);
+		buffMaintain($effect[Butt-Rock Hair]);
+		if(my_primestat() == $stat[Muscle])
+		{
+			auto_buyUpTo(1, $item[Ben-Gal&trade; Balm]);
+			buffMaintain($effect[Go Get \'Em, Tiger!]);
+			auto_buyUpTo(1, $item[Blood of the Wereseal]);
+			buffMaintain($effect[Temporary Lycanthropy]);
+		}
+
+		if(my_mp() > 30 && my_hp() < (my_maxhp()*0.5))
+		{
+			acquireHP();
+		}
+
+		if((in_hardcore() || (pulls_remaining() == 0)) && (item_amount($item[Worm-Riding Hooks]) > 0) && (get_property("desertExploration").to_int() <= (100 - (5 * progress))) && ((get_property("gnasirProgress").to_int() & 16) != 16) && (item_amount($item[Stone Rose]) == 0))
+		{
+			if(item_amount($item[Drum Machine]) > 0)
+			{
+				auto_log_info("Found the drums, now we use them!", "blue");
+				use(1, $item[Drum Machine]);
+			}
+			else
+			{
+				auto_log_info("Off to find the drums!", "blue");
+				autoAdv(1, $location[The Oasis]);
+			}
+			return true;
+		}
+
+		if(((get_property("gnasirProgress").to_int() & 1) != 1))
+		{
+			int expectedOasisTurns = 8 - $location[The Oasis].turns_spent;
+			int equivProgress = expectedOasisTurns * progress;
+			int need = 100 - get_property("desertExploration").to_int();
+			auto_log_info("expectedOasis: " + expectedOasisTurns, "brown");
+			auto_log_info("equivProgress: " + equivProgress, "brown");
+			auto_log_info("need: " + need, "brown");
+			if((need <= 15) && (15 >= equivProgress) && (item_amount($item[Stone Rose]) == 0))
+			{
+				auto_log_info("It seems raisinable to hunt a Stone Rose. Beep", "blue");
+				autoAdv(1, $location[The Oasis]);
+				return true;
+			}
+		}
+
+		if (dbr.fam != $familiar[none])
+		{
+			if(in_quantumTerrarium())
+			{
+				qt_FamiliarSwap(dbr.fam);
+			}
+			else
+			{
+				handleFamiliar(dbr.fam);
+			}
+		}
+		if (dbr.weapon != $item[none])
+		{
+			autoEquip($slot[weapon], dbr.weapon);
+		}
+		if (dbr.offhand != $item[none])
+		{
+			autoEquip($slot[off-hand], dbr.offhand);
+		}
+		if (dbr.fam_equip != $item[none])
+		{
+			autoEquip($slot[familiar], dbr.fam_equip);
+		}
+		set_property("choiceAdventure805", 1);
+		int need = 100 - get_property("desertExploration").to_int();
+		auto_log_info("Need for desert: " + need, "blue");
+		auto_log_info("Worm riding: " + item_amount($item[Worm-Riding Manual Page]), "blue");
+
+		if(!get_property("auto_gnasirUnlocked").to_boolean() && ($location[The Arid\, Extra-Dry Desert].turns_spent > 10) && (get_property("desertExploration").to_int() > 10))
+		{
+			auto_log_info("Did not appear to notice that Gnasir unlocked, assuming so at this point.", "green");
+			set_property("auto_gnasirUnlocked", true);
+		}
+
+		if(get_property("auto_gnasirUnlocked").to_boolean() && (item_amount($item[Stone Rose]) > 0) && ((get_property("gnasirProgress").to_int() & 1) != 1))
+		{
+			auto_log_info("Returning the stone rose", "blue");
+			auto_visit_gnasir();
+			visit_url("choice.php?whichchoice=805&option=1&pwd=");
+			visit_url("choice.php?whichchoice=805&option=2&pwd=");
+			visit_url("choice.php?whichchoice=805&option=1&pwd=");
+			if(item_amount($item[Desert Sightseeing Pamphlet]) == 0)
+			{
+				cli_execute("refresh inv");
+				if(item_amount($item[Desert Sightseeing Pamphlet]) == 0)
+				{
+					abort("Returned stone rose but did not return stone rose.");
+				}
+				else
+				{
+					if((get_property("gnasirProgress").to_int() & 1) != 1)
+					{
+						auto_log_warning("Mafia did not track gnasir Stone Rose (0x1). Fixing.", "red");
+						set_property("gnasirProgress", get_property("gnasirProgress").to_int() | 1);
+					}
+				}
+			}
+			use(1, $item[desert sightseeing pamphlet]);
+			return true;
 		}
 
 		autoAdv(1, $location[The Arid\, Extra-Dry Desert]);
@@ -1097,79 +1427,115 @@ boolean L11_aridDesert()
 	{
 		int need = 100 - get_property("desertExploration").to_int();
 		auto_log_info("Getting some ultrahydrated, I suppose. Desert left: " + need, "blue");
-
-		if((need > (5 * progress)) && cloversAvailable() > 2 && !auto_haveLovebugs())
+		if(!get_property("oasisAvailable").to_boolean() && have_effect($effect[Ultrahydrated]) == 0)
 		{
-			auto_log_info("Gonna clover this, yeah, it only saves 2 adventures. So?", "green");
-			cloverUsageInit();
-			autoAdvBypass("adventure.php?snarfblat=122", $location[The Oasis]);
-			cloverUsageFinish();
+			return autoadv(1, $location[The Arid\, Extra-Dry Desert]);
 		}
-		else
+
+		if(auto_haveBofa() && !isAboutToPowerlevel())
 		{
-			if(!autoAdv(1, $location[The Oasis]))
+			// wait for a monster to give us ultrahydrated
+			return false;
+		}
+
+		if(!autoAdv(1, $location[The Oasis]))
+		{
+			auto_log_warning("Could not visit the Oasis for some reason, desertExploration may be incorrect.", "red");
+			int initial = get_property("desertExploration").to_int();
+			string page = visit_url("place.php?whichplace=desertbeach");
+			matcher desert_matcher = create_matcher("title=\"[(](\\d+)% explored[)]\"", page);
+			if(desert_matcher.find())
 			{
-				auto_log_warning("Could not visit the Oasis for some raisin, assuming desertExploration is incorrect.", "red");
-				set_property("desertExploration", 0);
+				int found = to_int(desert_matcher.group(1));
+				if(found != initial)
+				{
+					auto_log_info("Incorrectly had exploration value of " + initial + " when it should be at " + found + ". This was corrected. Trying to resume.", "blue");
+					set_property("desertExploration", found);
+					return true;
+				}
+				if(!autoAdv(1, $location[The Oasis]))
+				{
+					abort("Tried to adventure in The Oasis but could not. property desertExploration determined to be correct");
+				}
+			}
+			else
+			{
+				abort("Tried to adventure in The Oasis but could not, and could not verify the actual exploration amount of the desert");
 			}
 		}
 	}
 	return true;
 }
 
-boolean L11_wishForBaaBaaBuran()
+boolean LX_killBaaBaaBuran()
 {
-	if (!canGenieCombat() || canEat($item[fortune cookie]))
-	{
-		return false;
-	}
-	if(!auto_shouldUseWishes())
-	{
-		auto_log_warning("Skipping wishing for Baa'baa'bu'ran because auto_useWishes=false", "red");
-	}
-	else
-	{
-		auto_log_info("I'm sorry we don't already have stone wool. You might even say I'm sheepish. Sheep wish.", "blue");
-		handleFamiliar("item");
-		if((numeric_modifier("item drop") >= 100))
-		{
-			if (!makeGenieCombat($monster[Baa\'baa\'bu\'ran]) || item_amount($item[Stone Wool]) == 0)
-			{
-				auto_log_warning("Wishing for stone wool failed.", "red");
-				return false;
-			}
-			return true;
+	if (!hidden_temple_unlocked()) { return false; }
+	if(item_amount($item[Stone Wool]) == 0 && have_effect($effect[Stone-Faced]) == 0)
+	{	// try to clover/summon baa baa first
+		if(auto_haveGreyGoose()){
+			auto_log_info("Bringing the Grey Goose to emit some drones at a Sheep carving.");
+			handleFamiliar($familiar[Grey Goose]);
 		}
-		else
+		else {
+			handleFamiliar("item");
+		}
+		addToMaximize("20 item 400max");
+		
+		// Right now clovers are "cheaper" than summons, so use clover first, but not our last.
+		if(cloversAvailable() > 1)
 		{
-			auto_log_warning("Never mind, we couldn't get a mere +100% item for the Baa'baa'bu'ran wish.", "red");
+			return autoLuckyAdv($location[The Hidden Temple]);
+		}
+		
+		if(canSummonMonster($monster[Baa\'baa\'bu\'ran]))
+		{
+			return summonMonster($monster[Baa\'baa\'bu\'ran]);
 		}
 	}
 	return false;
 }
 
-boolean L11_unlockHiddenCity() {
-	if (!hidden_temple_unlocked() || internalQuestStatus("questL11Worship") < 0 || internalQuestStatus("questL11Worship") > 2) {
+boolean L11_unlockHiddenCity() 
+{
+	if (!hidden_temple_unlocked() || internalQuestStatus("questL11Worship") < 0 || internalQuestStatus("questL11Worship") > 2) 
+	{
 		return false;
 	}
-	if (my_adventures() - auto_advToReserve() <= 3) {
+	if (my_adventures() - auto_advToReserve() <= 3) 
+	{
 		return false;
 	}
 
 	auto_log_info("Searching for the Hidden City", "blue");
-	if (!in_glover() && !in_tcrs()) {
-		if (item_amount($item[Stone Wool]) == 0 && have_effect($effect[Stone-Faced]) == 0) {
-			L11_wishForBaaBaaBuran();
+	if(!in_glover() && !in_tcrs()) 
+	{
+		// BaaBaabaran is the best source of stone wool
+		if (LX_killBaaBaaBuran()) { return true; }
+		
+		if(item_amount($item[Stone Wool]) == 0 && have_effect($effect[Stone-Faced]) == 0)
+		{
+			//try to pull stone wool
 			pullXWhenHaveY($item[Stone Wool], 1, 0);
 		}
-		buffMaintain($effect[Stone-Faced], 0, 1, 1);
-		if (have_effect($effect[Stone-Faced]) == 0) {
-			if(isAboutToPowerlevel())	//we ran out of other things to do.
+
+		buffMaintain($effect[Stone-Faced]);
+		if(have_effect($effect[Stone-Faced]) == 0)
+		{
+			if(isAboutToPowerlevel())	//we ran out of other quests to do. stop waiting for optimal conditions
 			{
-				abort("We do not smell like Stone nor have the face of one. We currently donut farm Stone Wool. Please get some");
+				//TODO replace this abort with a function that adventures in the ziggurat for stone wool.
+				abort("We need [Stone Wool] to unlock the hidden city and were unable to get it via Lucky!. This scenario is not currently automated. Please manually acquire 2 [Stone Wool] then run autoscend again.");
 			}
-			else return false;	//try to do other things first.
+			else return false;	//go do other things while we keep waiting for semirare
 		}
+	}
+	else if(in_glover())
+	{
+		if(have_effect($effect[Stone-Faced]) == 0)
+		{
+			auto_wishForEffect($effect[Stone-Faced]);
+		}
+		else return false;
 	}
 	return autoAdv($location[The Hidden Temple]);
 }
@@ -1182,7 +1548,11 @@ void hiddenTempleChoiceHandler(int choice, string page) {
 	} else if (choice == 125) { // No Visible Means of Support
 		run_choice(3); // Unlock the Hidden City!
 	} else if (choice == 579) { // Such Great Heights
-		if (item_amount($item[The Nostril of the Serpent]) == 0 && internalQuestStatus("questL11Worship") < 3) {
+		if (item_amount($item[stone wool]) >= 2 && get_property("lastTempleAdventures").to_int() < my_ascensions())
+		{
+			run_choice(3); // if we have plenty of stone wool, take the adventures first (and reset Mayam)
+		}
+		else if (item_amount($item[The Nostril of the Serpent]) == 0 && internalQuestStatus("questL11Worship") < 3) {
 			run_choice(2); // Get The Nostril of the Serpent
 		} else {
 			run_choice(3); // +3 adventures and extend 10 effects (first time) or skip
@@ -1210,6 +1580,22 @@ void hiddenTempleChoiceHandler(int choice, string page) {
 	}
 }
 
+boolean liana_cleared(location loc)
+{
+    //need to check the combat names due to wanderers
+	//we are assuming victory. you could have potentially fought liana without machete and then ran away. but you we are assuming you didn't
+    int dense_liana_defeated = 0;
+    string [int] area_combats_seen = loc.combat_queue.split_string("; ");
+    foreach key, s in area_combats_seen
+    {
+        if (s == "dense liana")
+		{
+			dense_liana_defeated += 1;
+		}
+    }
+    return dense_liana_defeated > 2;
+}
+
 boolean L11_hiddenTavernUnlock()
 {
 	return L11_hiddenTavernUnlock(false);
@@ -1232,6 +1618,10 @@ boolean L11_hiddenTavernUnlock(boolean force)
 		if(!in_hardcore())
 		{
 			pullXWhenHaveY($item[Book of Matches], 1, 0);
+			if(item_amount($item[Book of Matches]) == 0)
+			{
+				auto_makeMonkeyPawWish($item[Book of Matches]);
+			}
 		}
 	}
 
@@ -1245,6 +1635,169 @@ boolean L11_hiddenTavernUnlock(boolean force)
 		return false;
 	}
 	return true;
+}
+
+void hiddenCityChoiceHandler(int choice)
+{
+	if(choice == 780) // Action Elevator (The Hidden Apartment Building)
+	{
+		if(have_effect($effect[Thrice-Cursed]) > 0)
+		{
+			run_choice(1); // fight the spirit
+		}
+		else if(available_choice_options() contains 4 && have_effect($effect[Thrice-Cursed]) == 0) // Use CCSC to get Cursed +1
+		{
+			run_choice(4);
+			if(have_effect($effect[Thrice-Cursed]) > 0)
+			{
+				run_choice(1); // fight the spirit
+			}
+			else
+			{
+				run_choice(2); // get cursed
+			}
+		}
+		else
+		{
+			run_choice(2); // get cursed
+		}
+	}
+	else if(choice == 781) // Earthbound and Down (An Overgrown Shrine (Northwest))
+	{
+		if(get_property("hiddenApartmentProgress").to_int() == 0)
+		{
+			run_choice(1); // unlock the Hidden Apartment Building
+		}
+		else if(item_amount($item[moss-covered stone sphere]) > 0)
+		{
+			run_choice(2); // get the stone triangle
+		}
+		else
+		{
+			run_choice(6); // skip
+		}
+	}
+	else if(choice == 783) // Water You Dune (An Overgrown Shrine (Southwest))
+	{
+		if(get_property("hiddenHospitalProgress").to_int() == 0)
+		{
+			run_choice(1); // unlock the Hidden Hospital
+		}
+		else if(item_amount($item[dripping stone sphere]) > 0)
+		{
+			run_choice(2); // get the stone triangle
+		}
+		else
+		{
+			run_choice(6); // skip
+		}
+	}
+	else if(choice == 784) // You, M. D. (The Hidden Hospital)
+	{
+		run_choice(1); // fight the spirit
+	}
+
+	else if(choice == 785) // Air Apparent (An Overgrown Shrine (Northeast))
+	{
+		
+		if(get_property("hiddenOfficeProgress").to_int() == 0)
+		{
+			run_choice(1); // unlock the Hidden Office Building
+		}
+
+		// either use CCSC + unlock or just unlock based on user sphere presence
+		else if(item_amount($item[crackling stone sphere]) > 0)
+		{
+			if (available_choice_options() contains 4)
+			{
+				run_choice(4); // get free meat via CCSC
+			}
+			run_choice(2); // get the stone triangle
+		}
+		else
+		{
+			run_choice(6); // skip
+		}
+	}
+	else if(choice == 786) // Working Holiday (The Hidden Office Building)
+	{
+		if(item_amount($item[McClusky File (Complete)]) > 0)
+		{
+			run_choice(1); // fight the spirit
+		}
+		else if(item_amount($item[Boring Binder Clip]) == 0)
+		{
+			run_choice(2); // get boring binder clip
+		}
+		else
+		{
+			run_choice(3); // fight an accountant
+		}
+	}
+	else if(choice == 787) // Fire When Ready (An Overgrown Shrine (Southeast))
+	{
+		if(get_property("hiddenBowlingAlleyProgress").to_int() == 0)
+		{
+			run_choice(1); // unlock the Hidden Bowling Alley
+		}
+		else if(item_amount($item[scorched stone sphere]) > 0)
+		{
+			run_choice(2); // get the stone triangle
+		}
+		else
+		{
+			run_choice(6); // skip
+		}
+	}
+	else if(choice == 788) // Life is Like a Cherry of Bowls (The Hidden Bowling Alley)
+	{
+		if(available_choice_options() contains 2)
+		{
+			run_choice(2); // bowl for stats 4 times then fight the spirit on 5th occurrence
+			run_choice(1); // bowl for stats 4 times then fight the spirit on 5th occurrence
+		}
+		else
+		{
+			run_choice(1); // bowl for stats 4 times then fight the spirit on 5th occurrence
+		}
+	}
+	else if(choice == 789) // Where Does The Lone Ranger Take His Garbagester? (The Hidden Park)
+	{
+		if(get_property("relocatePygmyJanitor").to_int() != my_ascensions())
+		{
+			run_choice(2); // Relocate the Pygmy Janitor to the park
+		}
+		else
+		{
+			run_choice(1); // Get Hidden City zone items
+		}
+	}
+	else if(choice == 791) // Legend of the Temple in the Hidden City (A Massive Ziggurat)
+	{
+		if(item_amount($item[stone triangle]) == 4)
+		{
+			run_choice(1); // fight the Protector Spirit (or replacement)
+		}
+		else
+		{
+			run_choice(6); // skip
+		}
+	}
+	else if(choice == 1002) // Temple of the Legend in the Hidden City (A Massive Ziggurat/Actually Ed the Undying)
+	{
+		if(item_amount($item[stone triangle]) == 4)
+		{
+			run_choice(1); // Put the Ancient Amulet back
+		}
+		else
+		{
+			run_choice(6); // skip
+		}
+	}
+	else
+	{
+		abort("unhandled choice in hiddenCityChoiceHandler");
+	}
 }
 
 boolean L11_hiddenCity()
@@ -1268,16 +1821,9 @@ boolean L11_hiddenCity()
 		uneffect($effect[Thrice-Cursed]);
 	}
 
-	if (item_amount($item[Moss-Covered Stone Sphere]) == 0 && internalQuestStatus("questL11Business") < 1)
-	{
-		if(get_counters("Fortune Cookie", 0, 9) == "Fortune Cookie")
-		{
-			return false;
-		}
-	}
-	
+
 	//can we handle this zone?
-	if(!in_pokefam())
+	if(!in_pokefam() && !in_darkGyffte() && !in_aosol() && !in_wereprof())
 	{
 		if(!acquireHP())	//try to restore HP to max.
 		{
@@ -1285,22 +1831,28 @@ boolean L11_hiddenCity()
 			return false;		//could not heal HP. we should go do something else first
 		}
 	}
+	if(in_robot() && my_level() < 13)
+	{
+		return false;
+	}
 	
 	int weapon_ghost_dmg = numeric_modifier("hot damage") + numeric_modifier("cold damage") + numeric_modifier("stench damage") + numeric_modifier("sleaze damage") + numeric_modifier("spooky damage");
-	if(weapon_ghost_dmg < 20 &&				//we can not rely on melee/ranged weapon to kill the ghost
-	!acquireMP(30))							//try getting some MP, relying on a spell to kill them instead. TODO verify we have a spell
+	if(!in_robot() &&
+	!in_darkGyffte() &&
+	weapon_ghost_dmg < 20 &&				//we can not rely on melee/ranged weapon to kill the ghost
+	!acquireMP(30, 0))						//try getting some MP, relying on a spell to kill them instead. TODO verify we have a spell
 	{
 		auto_log_warning("We can not reliably kill Specters in hidden city due to a shortage of MP and elemental weapon dmg. Delaying zone", "red");
 		return false;
 	}	
 
-	if (internalQuestStatus("questL11Curses") < 2 && get_counters("Fortune Cookie", 0, 9) != "Fortune Cookie" && have_effect($effect[Ancient Fortitude]) == 0)
+	if (internalQuestStatus("questL11Curses") == 0 && have_effect($effect[Ancient Fortitude]) == 0)
 	{
 		auto_log_info("The idden [sic] apartment!", "blue");
 
-		boolean elevatorAction = ($location[The Hidden Apartment Building].turns_spent > 0 && $location[The Hidden Apartment Building].turns_spent % 8 == 0);
+		boolean elevatorAction = !zone_delay($location[The Hidden Apartment Building])._boolean || auto_haveQueuedForcedNonCombat();
 		
-		boolean canDrinkCursedPunch = canDrink($item[Cursed Punch]) && !get_property("auto_limitConsume").to_boolean() && !in_tcrs();
+		boolean canDrinkCursedPunch = canDrink($item[Cursed Punch]) && !get_property("auto_limitConsume").to_boolean() && !in_tcrs() && !in_small();
 		//todo: in_tcrs check quality and size of cursed punch instead of skipping? if that is possible
 		
 		int cursesNeeded = 3;
@@ -1311,6 +1863,10 @@ boolean L11_hiddenCity()
 		if(have_effect($effect[Twice-Cursed]) > 0)
 		{
 			cursesNeeded = 1;
+		}
+		if(auto_haveCCSC())
+		{
+			cursesNeeded -= 1;
 		}
 		
 		//able to drink, enough liver?
@@ -1333,7 +1889,7 @@ boolean L11_hiddenCity()
 			//should we try to force the noncombat?
 			boolean shouldForceElevatorAction = false;
 			
-			if(have_effect($effect[Thrice-Cursed]) > 0)
+			if((have_effect($effect[Thrice-Cursed]) > 0) || (have_effect($effect[Twice-Cursed]) > 0 && auto_haveCCSC()))
 			{
 				shouldForceElevatorAction = true;
 			}
@@ -1353,7 +1909,7 @@ boolean L11_hiddenCity()
 				//can drink and inebriety allows it
 				if(canDrinkCursedPunch)
 				{
-					boolean canBuyCursedPunch = (my_meat() >= cursesNeeded*500*npcStoreDiscountMulti());
+					boolean canBuyCursedPunch = (my_meat() >= cursesNeeded*500*npcStoreDiscountMulti() && !is_werewolf()); //can't buy cursed punch as a werewolf
 					
 					if(canBuyCursedPunch)
 					{
@@ -1369,13 +1925,34 @@ boolean L11_hiddenCity()
 			
 			if(shouldForceElevatorAction)
 			{
-				elevatorAction = auto_forceNextNoncombat();
+				elevatorAction = auto_forceNextNoncombat($location[The Hidden Apartment Building]);
+				// delay if we are out of NC forcers and haven't run out of things to do
+				if(!elevatorAction && my_daycount() < get_property("auto_runDayCount").to_int() && !isAboutToPowerlevel()) return false;
 			}
 		}
 
 		if(!elevatorAction)
 		{
 			auto_log_info("Hidden Apartment Progress: " + get_property("hiddenApartmentProgress"), "blue");
+
+			int turnsUntilElevatorAction = zone_delay($location[The Hidden Apartment Building])._int;
+
+			if(auto_have_familiar($familiar[Nosy Nose]) && auto_is_valid($skill[Get a Good Whiff of This Guy]))
+			{
+				if(have_effect($effect[Thrice-Cursed]) < (turnsUntilElevatorAction + 1)  && 
+				auto_combat_appearance_rates($location[The Hidden Apartment Building])[$monster[pygmy shaman]] < 100)
+				{
+					handleFamiliar($familiar[Nosy Nose]);	//whiff increases chance of shamen. the deleveling can also help survive being cursed
+				}
+				else if(auto_combat_appearance_rates($location[The Hidden Office Building])[$monster[pygmy witch accountant]] >= 20 && item_amount($item[McClusky file (complete)]) == 0)
+				{
+					//once done with curses will want witch accountants
+					if(item_amount($item[McClusky file (page 4)]) == 0 || get_property("nosyNoseMonster").to_monster() == $monster[pygmy witch accountant])
+					{
+						handleFamiliar($familiar[Nosy Nose]);
+					}
+				}
+			}
 			return autoAdv($location[The Hidden Apartment Building]);
 		}
 		else
@@ -1386,9 +1963,9 @@ boolean L11_hiddenCity()
 				if(canDrinkCursedPunch)
 				{
 					L11_hiddenTavernUnlock(true);
-					if(my_ascensions() == get_property("hiddenTavernUnlock").to_int())
+					if(my_ascensions() == get_property("hiddenTavernUnlock").to_int() && !is_werewolf())
 					{
-						buyUpTo(cursesNeeded, $item[Cursed Punch]);
+						auto_buyUpTo(cursesNeeded, $item[Cursed Punch]);
 						if(item_amount($item[Cursed Punch]) < cursesNeeded)
 						{
 							abort("Could not acquire Cursed Punch, unable to deal with Hidden Apartment Properly");
@@ -1397,12 +1974,16 @@ boolean L11_hiddenCity()
 					}
 				}
 			}
+			else
+			{
+				set_property("auto_nextEncounter","ancient protector spirit (The Hidden Apartment Building)");
+			}
 			auto_log_info("Hidden Apartment Progress: " + get_property("hiddenApartmentProgress"), "blue");
 			return autoAdv($location[The Hidden Apartment Building]);
 		}
 	}
 
-	if (internalQuestStatus("questL11Business") < 2 && my_adventures() >= 11)
+	if (internalQuestStatus("questL11Business") == 0 && (my_adventures() + $location[The Hidden Office Building].turns_spent) >= 11)
 	{
 		auto_log_info("The idden [sic] office!", "blue");
 
@@ -1415,33 +1996,81 @@ boolean L11_hiddenCity()
 			}
 		}
 
-		boolean workingHoliday = ($location[The Hidden Office Building].turns_spent > 0 && $location[The Hidden Office Building].turns_spent % 5 == 0);
+		int turnsUntilWorkingHoliday = zone_delay($location[The Hidden Office Building])._int;
+		boolean workingHoliday = (turnsUntilWorkingHoliday == 0 || auto_haveQueuedForcedNonCombat()) ;
+		
+		if(turnsUntilWorkingHoliday > 1 && item_amount($item[McClusky file (complete)]) > 0 && auto_canForceNextNoncombat()) {
+			if(auto_forceNextNoncombat($location[The Hidden Office Building]))	//how many delay turns should this save to be considered?
+			{
+				workingHoliday = true;
+			}
+			else if(my_daycount() < get_property("auto_runDayCount").to_int() && !isAboutToPowerlevel())
+			{
+				// delay if we are out of NC forcers and haven't run out of things to do
+				return false;
+			}
+		}
 
-		if (!workingHoliday && item_amount($item[McClusky file (complete)]) > 0 && auto_canForceNextNoncombat()) {
-			auto_forceNextNoncombat();
+		int missingMcCluskyFiles()
+		{
+			//files are obtained in order
+			if(item_amount($item[McClusky file (complete)]) > 0)	return 0;
+			else if(item_amount($item[McClusky file (page 5)]) > 0)	return 0;
+			else if(item_amount($item[McClusky file (page 4)]) > 0)	return 1;
+			else if(item_amount($item[McClusky file (page 3)]) > 0)	return 2;
+			else if(item_amount($item[McClusky file (page 2)]) > 0)	return 3;
+			else if(item_amount($item[McClusky file (page 1)]) > 0)	return 4;
+			else							return 5;
+		}
+
+		if(!workingHoliday && missingMcCluskyFiles() > 0)	//need more accountants
+		{
+			if(auto_have_familiar($familiar[Nosy Nose]) && auto_is_valid($skill[Get a Good Whiff of This Guy]) && 
+			auto_combat_appearance_rates($location[The Hidden Office Building])[$monster[pygmy witch accountant]] < 100)
+			{
+				handleFamiliar($familiar[Nosy Nose]);	//whiff increases chance of witch accountant
+			}
 		}
 
 		auto_log_info("Hidden Office Progress: " + get_property("hiddenOfficeProgress"), "blue");
+
+		if(workingHoliday && item_amount($item[boring binder clip]) > 0 && missingMcCluskyFiles() > 0 && 
+		auto_combat_appearance_rates($location[The Hidden Apartment Building])[$monster[pygmy witch accountant]] >= (missingMcCluskyFiles() * 25))
+		{
+			//Hidden Apartment unmodified 25% chance of accountant is better if only 1 missingMcCluskyFiles
+			//office noncombat is already one guaranteed accountant so with more missingMcCluskyFiles only go Apartment if better rate
+			auto_log_info("About to meet the boss in the Hidden Office. Trying to gather missing files in the Apartment instead to save delay.", "blue");
+			if(auto_have_familiar($familiar[Nosy Nose]) && auto_is_valid($skill[Get a Good Whiff of This Guy]))
+			{
+				handleFamiliar($familiar[Nosy Nose]);	//whiff increases chance of witch accountant
+			}
+			return autoAdv($location[The Hidden Apartment Building]);
+		}
+
+		if(workingHoliday && item_amount($item[McClusky file (complete)]) > 0)
+		{
+			set_property("auto_nextEncounter","ancient protector spirit (The Hidden Office Building)");
+		}
 		return autoAdv($location[The Hidden Office Building]);
 	}
 
-	if (internalQuestStatus("questL11Spare") < 2)
+	if (internalQuestStatus("questL11Spare") == 0)
 	{
 		auto_log_info("The idden [sic] bowling alley!", "blue");
 		L11_hiddenTavernUnlock(true);
 		if(my_ascensions() == get_property("hiddenTavernUnlock").to_int())
 		{
-			if(item_amount($item[Bowl Of Scorpions]) == 0)
+			if(item_amount($item[Bowl Of Scorpions]) == 0 && !is_werewolf()) //can't access shops as werewolf
 			{
-				buyUpTo(1, $item[Bowl Of Scorpions]);
-				if(auto_my_path() == "One Crazy Random Summer")
+				auto_buyUpTo(1, $item[Bowl Of Scorpions]);
+				if(in_ocrs())
 				{
-					buyUpTo(3, $item[Bowl Of Scorpions]);
+					auto_buyUpTo(3, $item[Bowl Of Scorpions]);
 				}
 			}
 		}
 
-		buffMaintain($effect[Fishy Whiskers], 0, 1, 1);
+		buffMaintain($effect[Fishy Whiskers]);
 		auto_log_info("Hidden Bowling Alley Progress: " + get_property("hiddenBowlingAlleyProgress"), "blue");
 		if (canSniff($monster[Pygmy Bowler], $location[The Hidden Bowling Alley]) && item_amount($item[bowling ball]) < 1 && auto_mapTheMonsters())
 		{
@@ -1452,10 +2081,19 @@ boolean L11_hiddenCity()
 			auto_log_info("Bringing the Camel to spit on a Pygmy Bowler for bowling balls.");
 			handleFamiliar($familiar[Melodramedary]);
 		}
+		if (auto_haveGreyGoose() && get_property("hiddenBowlingAlleyProgress").to_int() < 3)
+		{
+			auto_log_info("Bringing the Grey Goose to emit some drones at a Pygmy Bowler for bowling balls.");
+			handleFamiliar($familiar[Grey Goose]);
+		}
+		if(item_amount($item[Bowling Ball]) > 0 && get_property("hiddenBowlingAlleyProgress").to_int() == 5)
+		{
+			set_property("auto_nextEncounter","ancient protector spirit (The Hidden Bowling Alley)");
+		}
 		return autoAdv($location[The Hidden Bowling Alley]);
 	}
 
-	if (internalQuestStatus("questL11Doctor") < 2)
+	if (internalQuestStatus("questL11Doctor") == 0)
 	{
 		if(item_amount($item[Dripping Stone Sphere]) > 0)
 		{
@@ -1468,6 +2106,26 @@ boolean L11_hiddenCity()
 		autoEquip($item[surgical apron]);
 		autoEquip($slot[acc3], $item[head mirror]);
 		autoEquip($slot[acc2], $item[surgical mask]);
+
+		int surgeonGearWanted;
+		foreach it in $items[bloodied surgical dungarees,half-size scalpel,surgical apron,head mirror,surgical mask]
+		{
+			if(!possessEquipment(it) && auto_can_equip(it))
+			{
+				surgeonGearWanted += 1;
+			}
+		}
+		if(surgeonGearWanted > 0)	//need more surgeons?
+		{
+			if(auto_have_familiar($familiar[Nosy Nose]) && auto_is_valid($skill[Get a Good Whiff of This Guy]) && 
+			auto_combat_appearance_rates($location[The Hidden Hospital])[$monster[pygmy witch surgeon]] < 100)
+			{
+				if(surgeonGearWanted >= 2 || get_property("nosyNoseMonster").to_monster() == $monster[pygmy witch surgeon])
+				{
+					handleFamiliar($familiar[Nosy Nose]);	//whiff increases chance of witch accountant
+				}
+			}
+		}
 		auto_log_info("Hidden Hospital Progress: " + get_property("hiddenHospitalProgress"), "blue");
 		return autoAdv($location[The Hidden Hospital]);
 	}
@@ -1495,6 +2153,14 @@ boolean L11_hiddenCity()
 	if (item_amount($item[stone triangle]) == 4) {
 		auto_log_info("Fighting the out-of-work spirit", "blue");
 		acquireHP();
+		//AoSOL buffs
+		if(in_aosol())
+		{
+			buffMaintain($effect[Queso Fustulento], 10, 1, 10);
+			buffMaintain($effect[Tricky Timpani], 30, 1, 10);
+		}
+		set_property("auto_nextEncounter","Protector Spectre");
+		handleFamiliar("boss");
 		boolean advSpent = autoAdv($location[A Massive Ziggurat]);
 		if (internalQuestStatus("questL11MacGuffin") > 2) {
 			// Actually Ed finishes this quest when all 3 parts of the staff are returned
@@ -1515,13 +2181,17 @@ boolean L11_hiddenCityZones()
 
 	boolean equipMachete()
 	{
+		if(in_avantGuard())
+		{
+			return false; //combats aren't free so no point in equipping a Machete
+		}
 		if (auto_can_equip($item[Antique Machete]))
 		{
 			if (possessEquipment($item[Antique Machete]))
 			{
 				return autoForceEquip($item[Antique Machete]);
 			}
-			else if (!possessEquipment($item[Muculent Machete]))
+			else if (!possessEquipment($item[Muculent Machete]) && canPull($item[Antique Machete]))
 			{
 				pullXWhenHaveY($item[Antique Machete], 1, 0);
 				return autoForceEquip($item[Antique Machete]);
@@ -1529,7 +2199,7 @@ boolean L11_hiddenCityZones()
 		}
 		if (auto_can_equip($item[Muculent Machete]))
 		{
-			if (!possessEquipment($item[Muculent Machete]))
+			if (!possessEquipment($item[Muculent Machete]) && canPull($item[Muculent Machete]))
 			{
 				pullXWhenHaveY($item[Muculent Machete], 1, 0);
 			}
@@ -1540,8 +2210,8 @@ boolean L11_hiddenCityZones()
 
 	L11_hiddenTavernUnlock();
 
-	boolean canUseMachete = !in_boris() && auto_my_path() != "Way of the Surprising Fist" && !in_pokefam();
-	boolean needMachete = canUseMachete && !possessEquipment($item[Antique Machete]) && in_hardcore();
+	boolean canUseMachete = !is_boris() && !in_wotsf() && !in_pokefam() && !in_avantGuard();
+	boolean needMachete = canUseMachete && !possessEquipment($item[Antique Machete]) && (in_hardcore() || in_lol());
 	boolean needRelocate = (get_property("relocatePygmyJanitor").to_int() != my_ascensions());
 
 	if (needMachete || needRelocate) {
@@ -1551,37 +2221,69 @@ boolean L11_hiddenCityZones()
 		return autoAdv($location[The Hidden Park]);
 	}
 
-	if (get_property("hiddenApartmentProgress") == 0) {
+	if (get_property("breathitinCharges").to_int() > 0)
+	{
+		// Shrines & Ziggurat are outdoor zones with free combats. Let's not waste Breathitin charges.
+		return false;
+	}
+
+	if (auto_habitatFightsLeft() > 0)
+	{
+		// Don't waste habitat wanderers clearing dense liana's
+		return false;
+	}
+
+	if (get_property("hiddenApartmentProgress").to_int() == 0) {
 		if (canUseMachete && !equipMachete()) {
 			return false;
+		}
+		if(!canUseMachete && auto_haveTearawayPants())
+		{
+			autoForceEquip($item[Tearaway Pants]);
 		}
 		return autoAdv($location[An Overgrown Shrine (Northwest)]);
 	}
 
-	if (get_property("hiddenOfficeProgress") == 0) {
+	if (get_property("hiddenOfficeProgress").to_int() == 0) {
 		if (canUseMachete && !equipMachete()) {
 			return false;
+		}
+		if(!canUseMachete && auto_haveTearawayPants())
+		{
+			autoForceEquip($item[Tearaway Pants]);
 		}
 		return autoAdv($location[An Overgrown Shrine (Northeast)]);
 	}
 
-	if (get_property("hiddenHospitalProgress") == 0) {
+	if (get_property("hiddenHospitalProgress").to_int() == 0) {
 		if (canUseMachete && !equipMachete()) {
 			return false;
+		}
+		if(!canUseMachete && auto_haveTearawayPants())
+		{
+			autoForceEquip($item[Tearaway Pants]);
 		}
 		return autoAdv($location[An Overgrown Shrine (Southwest)]);
 	}
 
-	if (get_property("hiddenBowlingAlleyProgress") == 0) {
+	if (get_property("hiddenBowlingAlleyProgress").to_int() == 0) {
 		if (canUseMachete && !equipMachete()) {
 			return false;
+		}
+		if(!canUseMachete && auto_haveTearawayPants())
+		{
+			autoForceEquip($item[Tearaway Pants]);
 		}
 		return autoAdv($location[An Overgrown Shrine (Southeast)]);
 	}
 
 	if (!get_property("auto_openedziggurat").to_boolean()) {
-		if (!equipMachete()) {
+		if (canUseMachete && !equipMachete()) {
 			return false;
+		}
+		if(!canUseMachete && auto_haveTearawayPants())
+		{
+			autoForceEquip($item[Tearaway Pants]);
 		}
 		boolean advSpent = autoAdv($location[A Massive Ziggurat]);
 		if (get_property("lastEncounter") == "Legend of the Temple in the Hidden City" || (isActuallyEd() && get_property("lastEncounter") == "Temple of the Legend in the Hidden City")) {
@@ -1603,11 +2305,15 @@ boolean L11_mauriceSpookyraven()
 	{
 		return true;
 	}
+	if(in_robot() && my_level() < 13)
+	{
+		return false;		//delay fight so we can make sure we are strong enough to beat him
+	}
 
 	if (internalQuestStatus("questL11Manor") < 1)
 	{
 		auto_log_info("Searching for the basement of Spookyraven", "blue");
-		if(!cangroundHog($location[The Haunted Ballroom]))
+		if(!lar_repeat($location[The Haunted Ballroom]))
 		{
 			return false;
 		}
@@ -1632,14 +2338,24 @@ boolean L11_mauriceSpookyraven()
 
 	if (internalQuestStatus("questL11Manor") > 2)
 	{
+		if(is_professor())
+		{
+			return false;		//Can't beat Lord Spookyraven as the Professor
+		}
 		auto_log_info("Down with the tyrant of Spookyraven!", "blue");
+		//AoSOL buffs
+		if(in_aosol())
+		{
+			buffMaintain($effect[Queso Fustulento], 10, 1, 10);
+			buffMaintain($effect[Tricky Timpani], 30, 1, 10);
+		}
 		acquireHP();
 		int [element] resGoal;
 		foreach ele in $elements[hot, cold, stench, sleaze, spooky]
 		{
 			resGoal[ele] = 3;
 		}
-		provideResistances(resGoal, false);
+		provideResistances(resGoal, $location[Summoning Chamber], false);
 
 		# The autoAdvBypass case is probably suitable for Ed but we'd need to verify it.
 		if (isActuallyEd())
@@ -1652,6 +2368,7 @@ boolean L11_mauriceSpookyraven()
 		}
 		else
 		{
+			set_property("auto_nonAdvLoc", true);
 			autoAdv($location[Summoning Chamber]);
 		}
 		return true;
@@ -1675,7 +2392,7 @@ boolean L11_mauriceSpookyraven()
 		}
 	}
 
-	if(!possessEquipment($item[Lord Spookyraven\'s Spectacles]) || in_boris() || (auto_my_path() == "Way of the Surprising Fist") || in_bhy() || ((auto_my_path() == "Nuclear Autumn") && !get_property("auto_haveoven").to_boolean()))
+	if(!possessEquipment($item[Lord Spookyraven\'s Spectacles]) || is_boris() || in_wotsf() || in_bhy() || in_robot() || (in_nuclear() && !get_property("auto_haveoven").to_boolean()))
 	{
 		auto_log_warning("Alternate fulminate pathway... how sad :(", "red");
 		# I suppose we can let anyone in without the Spectacles.
@@ -1728,7 +2445,7 @@ boolean L11_mauriceSpookyraven()
 			autoCraft("cook", 1, $item[bottle of Chateau de Vinegar], $item[blasting soda]);
 			if(item_amount($item[Unstable Fulminate]) == 0)
 			{
-				if(auto_my_path() == "Nuclear Autumn")
+				if(in_nuclear())
 				{
 					auto_log_warning("Could not make an Unstable Fulminate, assuming we have no oven for realz...", "red");
 					return true;
@@ -1746,12 +2463,27 @@ boolean L11_mauriceSpookyraven()
 		abort("Did not read Mortar Recipe with the Spookyraven glasses. We can't proceed.");
 	}
 
+	if (auto_reserveUndergroundAdventures())
+	{
+		return false;
+	}
+
 	if (item_amount($item[bottle of Chateau de Vinegar]) == 0 && !possessEquipment($item[Unstable Fulminate]) && internalQuestStatus("questL11Manor") < 3)
 	{
+		if (is_banished($phylum[construct]) && get_property("screechCombats").to_int() > 0)
+		{
+			set_property("screechDelay", "construct");
+			return false; //No sense in trying to go to the Wine Cellar if constructs (Wine Racks) are banished
+		}
+
 		auto_log_info("Searching for vinegar", "blue");
 		if(!bat_wantHowl($location[The Haunted Wine Cellar]))
 		{
 			bat_formBats();
+		}
+		if((friars_available()) && (!get_property("friarsBlessingReceived").to_boolean()))
+		{
+			cli_execute("friars booze");
 		}
 		if (canSniff($monster[Possessed Wine Rack], $location[The Haunted Wine Cellar]) && auto_mapTheMonsters())
 		{
@@ -1761,11 +2493,18 @@ boolean L11_mauriceSpookyraven()
 	}
 	if (item_amount($item[blasting soda]) == 0 && !possessEquipment($item[Unstable Fulminate]) && internalQuestStatus("questL11Manor") < 3)
 	{
+		if (is_banished($phylum[undead]) && get_property("screechCombats").to_int() > 0)
+		{
+			set_property("screechDelay", "undead");
+			return false; //No sense in trying to go to the Laundry Room if undead (Cabinet of Dr. Limpieza) are banished
+		}
+
 		auto_log_info("Searching for baking soda, I mean, blasting pop.", "blue");
 		if(!bat_wantHowl($location[The Haunted Wine Cellar]))
 		{
 			bat_formBats();
 		}
+		auto_lostStomach(true);
 		if (canSniff($monster[Cabinet of Dr. Limpieza], $location[The Haunted Laundry Room]) && auto_mapTheMonsters())
 		{
 			auto_log_info("Attemping to use Map the Monsters to olfact a Cabinet of Dr. Limpieza.");
@@ -1775,18 +2514,35 @@ boolean L11_mauriceSpookyraven()
 
 	if (possessEquipment($item[Unstable Fulminate]) && internalQuestStatus("questL11Manor") < 3)
 	{
+		// Zootomist probably wants to wait until D2 in SC for this.
+		if (auto_inRonin() && in_zootomist())
+		{
+			if (auto_waitForDay2())
+			{
+				auto_log_debug("Delaying Monstrous Boiler waiting for day 2.");
+				return false;
+			}
+		}
+		
 		auto_MaxMLToCap(auto_convertDesiredML(82), true);
 		addToMaximize("500ml " + auto_convertDesiredML(82) + "max");
 
-		if((auto_my_path() == "Picky") && (item_amount($item[gumshoes]) > 0))
+		if(in_picky() && (item_amount($item[gumshoes]) > 0))
 		{
 			auto_change_mcd(0);
 			autoEquip($slot[acc2], $item[gumshoes]);
 		}
 		
+		if(is_professor())
+		{
+			// +ML is BAD for professor
+			auto_change_mcd(0);
+			removeFromMaximize("500ml " + auto_convertDesiredML(82) + "max");
+		}
+		
 		if(monster_level_adjustment() < 57)
 		{
-			buffMaintain($effect[Sweetbreads Flamb&eacute;], 0, 1, 1);
+			buffMaintain($effect[Sweetbreads Flamb&eacute;]);
 		}
 		
 		if(!autoForceEquip($slot[off-hand], $item[Unstable Fulminate]))
@@ -1820,12 +2576,22 @@ boolean L11_redZeppelin()
 	// TODO: create lynyrd skin items
 
 	set_property("choiceAdventure856", 1);
-	set_property("choiceAdventure857", 1);
+	if(auto_haveCCSC())
+	{
+		set_property("choiceAdventure857", 2);
+	}
+	else
+	{
+		set_property("choiceAdventure857", 1);
+	}
 	set_property("choiceAdventure858", 1);
-	buffMaintain($effect[Greasy Peasy], 0, 1, 1);
-	buffMaintain($effect[Musky], 0, 1, 1);
-	buffMaintain($effect[Blood-Gorged], 0, 1, 1);
-	pullXWhenHaveY($item[deck of lewd playing cards], 1, 0);
+	buffMaintain($effect[Greasy Peasy]);
+	buffMaintain($effect[Musky]);
+	buffMaintain($effect[Blood-Gorged]);
+	if(!in_wotsf())
+	{
+		pullXWhenHaveY($item[deck of lewd playing cards], 1, 0);
+	}
 
 	if(item_amount($item[Flamin\' Whatshisname]) > 0)
 	{
@@ -1837,42 +2603,70 @@ boolean L11_redZeppelin()
 	}
 
 	addToMaximize("100sleaze damage,100sleaze spell damage");
-	auto_beachCombHead("sleaze");
-	foreach it in $items[lynyrdskin breeches, lynyrdskin cap, lynyrdskin tunic]
+	if(auto_is_valid($effect[Oiled, Slick]))
 	{
-		if(possessEquipment(it) && auto_can_equip(it) &&
-		   (numeric_modifier(equipped_item(to_slot(it)), "sleaze damage") < 5) &&
-		   (numeric_modifier(equipped_item(to_slot(it)), "sleaze spell damage") < 5))
+		auto_beachCombHead("sleaze");
+	}
+	foreach sl in $slots[acc1, acc2, acc3]
+	{
+		if((numeric_modifier(equipped_item(sl), "sleaze damage") + numeric_modifier(equipped_item(sl), "sleaze spell damage")) < 60)
 		{
-			autoEquip(it);
+			if(item_amount($item[mini kiwi]) >= 2 && equipmentAmount($item[mini kiwi bikini]) < 3 && auto_is_valid($item[mini kiwi bikini]))
+			{
+				create(1, $item[mini kiwi bikini]);
+			}
 		}
 	}
+
+	equipMaximizedGear();
 
 	if(auto_is_valid($item[lynyrd snare]) && item_amount($item[lynyrd snare]) > 0 && get_property("_lynyrdSnareUses").to_int() < 3 && my_hp() > 150)
 	{
 		return autoAdvBypass("inv_use.php?pwd=&whichitem=7204&checked=1", $location[A Mob of Zeppelin Protesters]);
 	}
 
-	if(cloversAvailable() > 0 && get_property("zeppelinProtestors").to_int() < 75)
-	{
-		if(cloversAvailable() >= 3 && auto_shouldUseWishes())
+	if(get_property("zeppelinProtestors").to_int() < 75 && cloversAvailable() > 0)
+	{ // "zeppelinProtestors" is number killed so far, so it ends when we hit 80
+		if(cloversAvailable() >= 3)
 		{
-			makeGenieWish($effect[Fifty Ways to Bereave Your Lover]); // +100 sleaze dmg
-			makeGenieWish($effect[Dirty Pear]); // double sleaze dmg
-		}
+			if (!in_koe() || my_daycount() > 1) // in koe, if d1 save bend hell for invader
+			{
+				buffMaintain($effect[Bendin\' Hell],0,0,1);
+			}
+			foreach ef in $effects[Dirty Pear, Fifty Ways to Bereave Your Lover] // double sleaze dmg, +100 sleaze dmg, 
+			{
+				float target_sleaze = 400;
+				float current_sleaze = numeric_modifier($modifier[sleaze damage])+numeric_modifier($modifier[sleaze spell damage]);
+				if(possessEquipment($item[candy cane sword cane]) && auto_is_valid($item[candy cane sword cane]))
+				{
+					target_sleaze = 190; // We need so much less sleaze damage with the candy cane sword doubling
+				}
+				if (current_sleaze < target_sleaze)
+				{
+					if (have_effect(ef)==0)
+					{
+						auto_wishForEffect(ef);
+					}
+				}
+			} // effects
+		} // have clovers
 		if(in_tcrs())
 		{
 			if(my_class() == $class[Sauceror] && my_sign() == "Blender")
 			{
 				if (0 == have_effect($effect[Improprie Tea]))
 				{
-					buyUpTo(1, $item[Ben-Gal&trade; Balm], 25);
+					auto_buyUpTo(1, $item[Ben-Gal&trade; Balm]);
 					use(1, $item[Ben-Gal&trade; Balm]);
 				}
 			}
 		}
 		float fire_protestors = item_amount($item[Flamin\' Whatshisname]) > 0 ? 10 : 3;
 		float sleaze_amount = numeric_modifier("sleaze damage") + numeric_modifier("sleaze spell damage");
+		if(auto_haveCCSC())
+		{
+			sleaze_amount = sleaze_amount * 2;
+		}
 		float sleaze_protestors = square_root(sleaze_amount);
 		float lynyrd_protestors = have_effect($effect[Musky]) > 0 ? 6 : 3;
 		foreach it in $items[lynyrdskin cap, lynyrdskin tunic, lynyrdskin breeches]
@@ -1903,11 +2697,14 @@ boolean L11_redZeppelin()
 			{
 				set_property("choiceAdventure866", 3);
 			}
-			cloverUsageInit();
-			boolean retval = autoAdv(1, $location[A Mob of Zeppelin Protesters]);
-			cloverUsageFinish();
-			return retval;
+			return autoLuckyAdv($location[A Mob of Zeppelin Protesters]);
 		}
+	}
+
+	if (auto_waitForDay2())
+	{
+		auto_log_debug("Delaying zeppelin protestors waiting for day 2 clovers.");
+		return false;
 	}
 
 	if (handleFamiliar($familiar[Red-Nosed Snapper])) {
@@ -1946,10 +2743,9 @@ boolean L11_ronCopperhead()
 		return false;
 	}
 
-
 	if (internalQuestStatus("questL11Ron") > 1 && internalQuestStatus("questL11Ron") < 5)
 	{
-		if (item_amount($item[Red Zeppelin Ticket]) < 1)
+		if (item_amount($item[Red Zeppelin Ticket]) < 1 && !in_wotsf() && !is_werewolf()) // no black market in wotsf, can't access as werewolf
 		{
 			// use the priceless diamond since we go to the effort of trying to get one in the Copperhead Club
 			// and it saves us 4.5k meat.
@@ -1959,7 +2755,7 @@ boolean L11_ronCopperhead()
 			}
 			else if (my_meat() > npc_price($item[Red Zeppelin Ticket]))
 			{
-				buy(1, $item[Red Zeppelin Ticket]);
+				auto_buyUpTo(1, $item[Red Zeppelin Ticket]);
 			}
 		}
 		// For Glark Cables. OPTIMAL!
@@ -1972,6 +2768,14 @@ boolean L11_ronCopperhead()
 		{
 			auto_log_info("Bringing the Camel to spit on a Red Butler for glark cables.");
 			handleFamiliar($familiar[Melodramedary]);
+		}
+		if(auto_haveGreyGoose()){
+			auto_log_info("Bringing the Grey Goose to emit some drones at a Red Butler for glark cables.");
+			handleFamiliar($familiar[Grey Goose]);
+		}
+		if(internalQuestStatus("questL11Ron") == 4)
+		{
+			set_property("auto_nextEncounter","Ron \"The Weasel\" Copperhead");
 		}
 		boolean retval = autoAdv($location[The Red Zeppelin]);
 		// open red boxes when we get them (not sure if this is the place for this but it'll do for now)
@@ -2000,12 +2804,7 @@ boolean L11_shenStartQuest()
 	{
 		return false;
 	}
-	if (my_daycount() < 2 || !allowSoftblockShen())
-	{
-		// if you're fast enough to open it on day 1, maybe wait until day 2
-		return false;
-	}
-	backupSetting("choiceAdventure1074", 1);
+		
 	auto_log_info("Going to see the World's Biggest Jerk about some snakes and stones and stuff.", "blue");
 	if (autoAdv($location[The Copperhead Club]))
 	{
@@ -2041,8 +2840,18 @@ boolean L11_shenCopperhead()
 		return false;
 	}
 
+	if (is_banished($phylum[dude]) && get_property("screechCombats").to_int() > 0)
+	{
+		set_property("screechDelay", "dude");
+		return false; //Probably should delay the Copperhead Club because dudes are important here
+	}
+
 	if (internalQuestStatus("questL11Shen") == 2 || internalQuestStatus("questL11Shen") == 4 || internalQuestStatus("questL11Shen") == 6)
 	{
+		if(is_professor())
+		{
+			return false; //can't do Copperhead Club as a Professor but can do other parts of Shen quest
+		}
 		if (item_amount($item[Crappy Waiter Disguise]) > 0 && have_effect($effect[Crappily Disguised as a Waiter]) == 0 && !in_tcrs())
 		{
 			use(1, $item[Crappy Waiter Disguise]);
@@ -2056,6 +2865,10 @@ boolean L11_shenCopperhead()
 					// got priceless diamond or zeppelin ticket (or we are rich) so lets burn the place down (and make Flamin' Whatsisnames)
 					behindtheStacheOption = 3;
 				}
+			}
+			else if (have_equipped($item[Candy Cane Sword Cane]) && (item_amount($item[priceless diamond]) == 0 && item_amount($item[Red Zeppelin Ticket]) == 0))
+			{
+				behindtheStacheOption = 5;
 			}
 			else
 			{
@@ -2072,7 +2885,9 @@ boolean L11_shenCopperhead()
 			auto_changeSnapperPhylum($phylum[dude]);
 		}
 
+		// monster level increases zone damage
 		addToMaximize("-10ml");
+		uneffect($effect[Ur-Kel\'s Aria of Annoyance]);
 		if (autoAdv($location[The Copperhead Club]))
 		{
 			if (get_property("lastEncounter").contains_text("Shen Copperhead, "))
@@ -2176,7 +2991,13 @@ boolean L11_palindome()
 		return false;
 	}
 
-	if (!possessEquipment($item[Talisman o' Namsilat])) {
+	if (!possessEquipment($item[Talisman o\' Namsilat])) {
+		return false;
+	}
+
+	if (my_meat() < ((2 - (item_amount($item[Photograph Of A Red Nugget]) + item_amount($item[Photograph Of God]))) * 500) && internalQuestStatus("questL11Palindome") < 1)
+	{
+		auto_log_info("Not enough meat for the Palindome");
 		return false;
 	}
 
@@ -2186,6 +3007,12 @@ boolean L11_palindome()
 	total = total + item_amount($item[Photograph Of God]);
 	total = total + item_amount($item[Photograph Of A Dog]);
 
+	if(is_banished($phylum[dude]) && get_property("screechCombats").to_int() > 0)
+	{
+		set_property("screechDelay", "dude");
+		return false; //If new phylum banishers come out, this should be updated.
+	}
+
 	boolean lovemeDone = hasILoveMeVolI() || (internalQuestStatus("questL11Palindome") >= 1);
 	if(!lovemeDone && (get_property("palindomeDudesDefeated").to_int() >= 5))
 	{
@@ -2194,17 +3021,93 @@ boolean L11_palindome()
 	}
 
 	auto_log_info("In the palindome : emodnilap eht nI", "blue");
+
+	boolean makeWetStuntNutStew()
+	{
+		 if((item_amount($item[Bird Rib]) > 0) && (item_amount($item[Lion Oil]) > 0) && (item_amount($item[Wet Stew]) == 0))
+		{
+			autoCraft("cook", 1, $item[Bird Rib], $item[Lion Oil]);
+		}
+
+		if((item_amount($item[Stunt Nuts]) > 0) && (item_amount($item[Wet Stew]) > 0) && (item_amount($item[Wet Stunt Nut Stew]) == 0))
+		{
+			autoCraft("cook", 1, $item[wet stew], $item[stunt nuts]);
+		}
+		if(item_amount($item[wet stunt nut stew]) > 0)
+		{
+			return true;
+		}
+		return false;
+	}
+
 	#
 	#	In hardcore, guild-class, the right side of the or doesn't happen properly due us farming the
 	#	Mega Gem within the if, with pulls, it works fine. Need to fix this. This is bad.
 	#
-	if((item_amount($item[Bird Rib]) > 0) && (item_amount($item[Lion Oil]) > 0) && (item_amount($item[Wet Stew]) == 0))
+	boolean doWhiteys()
 	{
-		autoCraft("cook", 1, $item[Bird Rib], $item[Lion Oil]);
+		//After we get the photos
+		//First try wishing, then try Whitey's. At 0% item / combat / food drop, this expects to take ~19 turns. At a very achievable 100% item, 10 turns.
+		//The alternate route takes 14 turns so always worth trying Whitey's IMO.
+		//If we hit this, we should only need to finish the L11 quest so it won't hurt to do everything in provideItem
+		//since we will need +item for tomb rats in ~15 turns anyway. Buffs from wishes should still be active
+		//since they are 30 turns from monkey paw wishes and 20 turns from pocket/genie wishes.
+		if(auto_monkeyPawWishesLeft() > 0)
+		{
+			foreach it in $items[Lion Oil, Bird Rib]
+			{
+				if(item_amount(it) > 0) continue;
+				auto_makeMonkeyPawWish(it);
+			}
+			if(item_amount($item[Lion Oil]) > 0 && item_amount($item[Bird Rib]) > 0)
+			{
+				return makeWetStuntNutStew();
+			}
+			//wasn't able to make the stew so continue to Whitey's
+		}
+		// in normal, we delayed until this was all we had to do. In hardcore we do it earlier.
+		provideItem(300, $location[Whitey's Grove], !in_hardcore());
+		set_property("auto_doWhiteys", true);
+		if(item_amount($item[white page]) > 0)
+		{
+			set_property("choiceAdventure940", 1);
+			if(item_amount($item[Bird Rib]) > 0)
+			{
+				set_property("choiceAdventure940", 2);
+			}
+
+			if(get_property("lastGuildStoreOpen").to_int() < my_ascensions())
+			{
+				auto_log_warning("This is probably no longer needed as of r16907. Please remove me", "blue");
+				auto_log_warning("Going to pretend we have unlocked the Guild because Mafia will assume we need to do that before going to Whitey's Grove and screw up us. We'll fix it afterwards.", "red");
+			}
+			backupSetting("lastGuildStoreOpen", my_ascensions());
+			string[int] pages;
+			pages[0] = "inv_use.php?pwd&which=3&whichitem=7555";
+			pages[1] = "choice.php?pwd&whichchoice=940&option=" + get_property("choiceAdventure940");
+			if(autoAdvBypass(0, pages, $location[Whitey\'s Grove], "")) {}
+			restoreSetting("lastGuildStoreOpen");
+			return true;
+		}
+		//Can't do Whitey's Grove if beasts are banished
+		if(is_banished($phylum[beast]) && get_property("screechCombats").to_int() > 0)
+		{
+			set_property("screechDelay", "beast");
+			return false; //If new phylum banishers come out, this should be updated.
+		}
+		providePlusCombat(15, $location[Whitey's Grove], false);
+		// +item is nice to get that food
+		bat_formBats();
+		auto_lostStomach(true);
+		auto_log_info("Off to the grove for some doofy food!", "blue");
+		return autoAdv(1, $location[Whitey\'s Grove]);
 	}
-	if((item_amount($item[Stunt Nuts]) > 0) && (item_amount($item[Wet Stew]) > 0) && (item_amount($item[Wet Stunt Nut Stew]) == 0))
+
+	if(item_amount($item[wet stunt nut stew]) == 0 && internalQuestStatus("questL11Palindome") >= 3)
 	{
-		autoCraft("cook", 1, $item[wet stew], $item[stunt nuts]);
+		if (makeWetStuntNutStew()) {
+			return true;
+		}
 	}
 
 	if((item_amount($item[Wet Stunt Nut Stew]) > 0) && !possessEquipment($item[Mega Gem]))
@@ -2214,38 +3117,14 @@ boolean L11_palindome()
 		visit_url("place.php?whichplace=palindome&action=pal_mrlabel");
 	}
 
-	if((total == 0) && !possessEquipment($item[Mega Gem]) && lovemeDone && in_hardcore() && (item_amount($item[Wet Stunt Nut Stew]) == 0) && ((internalQuestStatus("questL11Palindome") >= 3) || isGuildClass()) && !get_property("auto_bruteForcePalindome").to_boolean())
+	if((total == 0) && !possessEquipment($item[Mega Gem]) && lovemeDone && (in_hardcore() || get_property("auto_doWhiteys").to_boolean()) && (item_amount($item[Wet Stunt Nut Stew]) == 0) && ((internalQuestStatus("questL11Palindome") >= 3) || isGuildClass()) && !get_property("auto_bruteForcePalindome").to_boolean())
 	{
 		if(item_amount($item[Wet Stunt Nut Stew]) == 0)
 		{
 			equipBaseline();
 			if((item_amount($item[Bird Rib]) == 0) || (item_amount($item[Lion Oil]) == 0))
 			{
-				if(item_amount($item[white page]) > 0)
-				{
-					set_property("choiceAdventure940", 1);
-					if(item_amount($item[Bird Rib]) > 0)
-					{
-						set_property("choiceAdventure940", 2);
-					}
-
-					if(get_property("lastGuildStoreOpen").to_int() < my_ascensions())
-					{
-						auto_log_warning("This is probably no longer needed as of r16907. Please remove me", "blue");
-						auto_log_warning("Going to pretend we have unlocked the Guild because Mafia will assume we need to do that before going to Whitey's Grove and screw up us. We'll fix it afterwards.", "red");
-					}
-					backupSetting("lastGuildStoreOpen", my_ascensions());
-					string[int] pages;
-					pages[0] = "inv_use.php?pwd&which=3&whichitem=7555";
-					pages[1] = "choice.php?pwd&whichchoice=940&option=" + get_property("choiceAdventure940");
-					if(autoAdvBypass(0, pages, $location[Whitey\'s Grove], "")) {}
-					restoreSetting("lastGuildStoreOpen");
-					return true;
-				}
-				// +item is nice to get that food
-				bat_formBats();
-				auto_log_info("Off to the grove for some doofy food!", "blue");
-				autoAdv(1, $location[Whitey\'s Grove]);
+				doWhiteys();
 			}
 			else if(item_amount($item[Stunt Nuts]) == 0)
 			{
@@ -2268,8 +3147,12 @@ boolean L11_palindome()
 		}
 		if (equipped_amount($item[Talisman o\' Namsilat]) == 0)
 			equip($slot[acc3], $item[Talisman o\' Namsilat]);
-		visit_url("place.php?whichplace=palindome&action=pal_drlabel");
-		visit_url("choice.php?pwd&whichchoice=872&option=1&photo1=2259&photo2=7264&photo3=7263&photo4=7265");
+
+		if (internalQuestStatus("questL11Palindome") < 1)
+		{
+			visit_url("place.php?whichplace=palindome&action=pal_drlabel");
+			visit_url("choice.php?pwd&whichchoice=872&option=1&photo1=2259&photo2=7264&photo3=7263&photo4=7265");
+		}
 
 		if (isActuallyEd())
 		{
@@ -2287,6 +3170,7 @@ boolean L11_palindome()
 			{
 				use(1, $item[&quot;2 Love Me\, Vol. 2&quot;]);
 				auto_log_info("Oh no, we died from reading a book. I'm going to take a nap.", "blue");
+				set_property("_auto_forcePokefamRestore", true);
 				acquireHP();
 				bat_reallyPickSkills(20);
 			}
@@ -2304,20 +3188,10 @@ boolean L11_palindome()
 					pullXWhenHaveY($item[Stunt Nuts], 1, 0);
 				}
 			}
-			if(in_hardcore() && isGuildClass())
+			if(in_hardcore())
 			{
 				return true;
 			}
-		}
-
-		if((item_amount($item[Bird Rib]) > 0) && (item_amount($item[Lion Oil]) > 0) && (item_amount($item[Wet Stew]) == 0))
-		{
-			autoCraft("cook", 1, $item[Bird Rib], $item[Lion Oil]);
-		}
-
-		if((item_amount($item[Stunt Nuts]) > 0) && (item_amount($item[Wet Stew]) > 0) && (item_amount($item[Wet Stunt Nut Stew]) == 0))
-		{
-			autoCraft("cook", 1, $item[wet stew], $item[stunt nuts]);
 		}
 
 		if(!possessEquipment($item[Mega Gem]))
@@ -2342,11 +3216,34 @@ boolean L11_palindome()
 		string[int] pages;
 		pages[0] = "place.php?whichplace=palindome&action=pal_drlabel";
 		pages[1] = "choice.php?pwd&whichchoice=131&option=" + palinChoice;
+		set_property("auto_nextEncounter","Dr. Awkward");
+		//AoSOL buffs
+		if(in_aosol())
+		{
+			buffMaintain($effect[Queso Fustulento], 10, 1, 10);
+			buffMaintain($effect[Tricky Timpani], 30, 1, 10);
+		}
 		autoAdvBypass(0, pages, $location[Noob Cave], "");
 		return true;
 	}
 	else
 	{
+		if(pulls_remaining() == 0)
+		{
+			// used our pulls today before getting to palindrome. Delay until next day or run out of other stuff to do
+			if(!isAboutToPowerlevel())
+			{
+				auto_log_debug("Delaying palindrome.");
+				return false;
+			}
+			else
+			{
+				if (internalQuestStatus("questL11Palindome") > 2)
+				{
+					return doWhiteys(); //Initial call to do Whitey's Grove
+				}
+			}
+		}
 		if((my_mp() > 60) || considerGrimstoneGolem(true))
 		{
 			handleBjornify($familiar[Grimstone Golem]);
@@ -2367,17 +3264,83 @@ boolean L11_palindome()
 			}
 		}
 
+		int dudesToDown = 5;
+		if(internalQuestStatus("questL11Palindome") < 1 && item_amount($item[photograph of a dog]) == 0)
+		{
+			//TODO if no camera check if it is better to pull or go get one, than to find 4 more dudes and a Bob
+			if(item_amount($item[disposable instant camera]) == 0 || !auto_is_valid($item[disposable instant camera]))
+			{
+				dudesToDown = 10;	//if bob can't be photographed need to down more dudes
+			}
+		}
+
 		autoEquip($slot[acc3], $item[Talisman o\' Namsilat]);
 		if (handleFamiliar($familiar[Red-Nosed Snapper]))
 		{
 			auto_changeSnapperPhylum($phylum[dude]);
 		}
+		else if(auto_have_familiar($familiar[Nosy Nose]) && auto_is_valid($skill[Get a Good Whiff of This Guy]))
+		{
+			boolean noseDudesOn = true;
+			if(item_amount($item[Stunt Nuts]) == 0 && item_amount($item[Wet Stunt Nut Stew]) == 0)
+			{
+				//may want to use an item familiar first for stunt nuts
+				//unfortunately the sniff condition system means if taking the nose later after using different sniffs on a dude it will only be able to whiff on the same dude
+				int stuntNutDropModifierWithoutFamiliar = item_drop_modifier() + numeric_modifier("Food Drop") - auto_famModifiers("Item Drop");
+				if(stuntNutDropModifierWithoutFamiliar < 234)	//30% base drop chance
+				{
+					noseDudesOn = false;
+				}
+			}
+			if(noseDudesOn)
+			{
+				boolean whiffedBob = get_property("nosyNoseMonster").to_monster() == $monster[Racecar Bob] || get_property("nosyNoseMonster").to_monster() == $monster[Bob Racecar];
+				if(is_banished($monster[Flock of Stab-bats]) && is_banished($monster[Taco Cat]) && is_banished($monster[Tan Gnat]) && is_banished($monster[Evil Olive]))
+				{
+					//only dudes left already
+					noseDudesOn = false;
+				}
+				else if(get_property("palindomeDudesDefeated").to_int() >= dudesToDown)
+				{
+					if(dudesToDown >= 10 && whiffedBob)	//when looking for photograph of a dog without disposable instant camera
+					{	//the 10th or later dude must be a Bob, keep using the nose if it's tracking Bob
+						noseDudesOn = true;
+					}
+					else
+					{
+						//had enough dudes
+						noseDudesOn = false;
+					}
+				}
+				else if(get_property("palindomeDudesDefeated").to_int() == (dudesToDown - 1))
+				{
+					if(!whiffedBob)	//don't need to start sniffing the last dude
+					{
+						noseDudesOn = false;
+					}
+				}
+				else if(isSniffed($monster[Racecar Bob],$skill[Transcendent Olfaction]) || 
+				isSniffed($monster[Bob Racecar],$skill[Transcendent Olfaction]) || 
+				isSniffed($monster[Drab Bard],$skill[Transcendent Olfaction]) || 
+				getSniffer($monster[Racecar Bob], false) == $skill[Transcendent Olfaction] || 
+				getSniffer($monster[Bob Racecar], false) == $skill[Transcendent Olfaction])
+				{
+					//olfaction is or will be used and is probably powerful enough not to need weak nose tracking on
+					noseDudesOn = false;
+				}
+			}
+			if(noseDudesOn)
+			{
+				handleFamiliar($familiar[Nosy Nose]);
+			}
+		}
+
 		if (canSniff($monster[Bob Racecar], $location[Inside the Palindome]) && auto_mapTheMonsters())
 		{
 			auto_log_info("Attemping to use Map the Monsters to olfact a Bob Racecar.");
 		}
 		boolean advSpent = autoAdv($location[Inside the Palindome]);
-		if($location[Inside the Palindome].turns_spent > 30 && !in_pokefam() && !in_koe() && auto_is_valid($item[Disposable Instant Camera]))
+		if ($location[Inside the Palindome].turns_spent > 30 && !in_pokefam() && !in_koe() && !in_avantGuard() && auto_is_valid($item[Disposable Instant Camera]))
 		{
 			abort("It appears that we've spent too many turns in the Palindome. If you run me again, I'll try one more time but many I failed finishing the Palindome");
 		}
@@ -2391,7 +3354,8 @@ boolean L11_palindome()
 
 boolean L11_unlockPyramid()
 {
-  if (internalQuestStatus("questL11Desert") < 1 || get_property("desertExploration").to_int() < 100 || internalQuestStatus("questL11Pyramid") > -1)
+	visit_url("place.php?whichplace=desertbeach");
+	if (internalQuestStatus("questL11Desert") < 1 || get_property("desertExploration").to_int() < 100 || internalQuestStatus("questL11Pyramid") > -1)
 	{
 		return false;
 	}
@@ -2411,7 +3375,7 @@ boolean L11_unlockPyramid()
 	}
 	
 	auto_log_info("Reveal the pyramid", "blue");
-	if (in_koe())
+	if(in_koe())
 	{
 		visit_url("place.php?whichplace=exploathing_beach&action=expl_pyramidpre");
 		cli_execute("refresh quests");
@@ -2464,6 +3428,10 @@ boolean L11_unlockEd()
 	{
 		return true;
 	}
+	if (auto_reserveUndergroundAdventures())
+	{
+		return false;
+	}
 
 	if (internalQuestStatus("questL03Rat") < 2)
 	{
@@ -2489,10 +3457,6 @@ boolean L11_unlockEd()
 
 	if((total >= 10) && (my_adventures() >= 4) && get_property("controlRoomUnlock").to_boolean())
 	{
-		if (get_counters("Fortune Cookie", 0, 3) == "Fortune Cookie")
-		{
-			return false;
-		}
 
 		visit_url("place.php?whichplace=pyramid&action=pyramid_control");
 		int x = 0;
@@ -2520,30 +3484,8 @@ boolean L11_unlockEd()
 	}
 	if(total < 10)
 	{
-		buffMaintain($effect[Joyful Resolve], 0, 1, 1);
-		buffMaintain($effect[One Very Clear Eye], 0, 1, 1);
-		buffMaintain($effect[Fishy Whiskers], 0, 1, 1);
-		buffMaintain($effect[Human-Fish Hybrid], 0, 1, 1);
-		buffMaintain($effect[Human-Human Hybrid], 0, 1, 1);
-		buffMaintain($effect[Unusual Perspective], 0, 1, 1);
-		if(!bat_wantHowl($location[The Middle Chamber]))
-		{
-			bat_formBats();
-		}
-		if(get_property("auto_dickstab").to_boolean())
-		{
-			buffMaintain($effect[Wet and Greedy], 0, 1, 1);
-			buffMaintain($effect[Frosty], 0, 1, 1);
-		}
-		if((item_amount($item[possessed sugar cube]) > 0) && (have_effect($effect[Dance of the Sugar Fairy]) == 0))
-		{
-			cli_execute("make sugar fairy");
-			buffMaintain($effect[Dance of the Sugar Fairy], 0, 1, 1);
-		}
-		if(have_effect($effect[items.enh]) == 0)
-		{
-			auto_sourceTerminalEnhance("items");
-		}
+		// tomb ratchets have 20% drop rate
+		provideItem(400, $location[The Middle Chamber], true);
 	}
 
 	if(get_property("controlRoomUnlock").to_boolean())
@@ -2557,6 +3499,18 @@ boolean L11_unlockEd()
 	if (canSniff($monster[Tomb Rat], $location[The Middle Chamber]) && auto_mapTheMonsters())
 	{
 		auto_log_info("Attemping to use Map the Monsters to olfact a Tomb Rat.");
+	}
+	
+	if(auto_haveGreyGoose() && item_amount($item[Tangle of rat tails]) >= 1)
+	{
+		auto_log_info("Bringing the Grey Goose to emit some drones at some rat kings.");
+		handleFamiliar($familiar[Grey Goose]);
+	}
+
+	if(auto_can_equip($item[pro skateboard]) && equipmentAmount($item[pro skateboard]) > 0 && item_amount($item[Tangle of rat tails]) >= 1 && !get_property("_epicMcTwistUsed").to_boolean() && !in_pokefam())
+	{
+		auto_log_info("Be like Tony Hawk on a Tomb Rat King!");
+		autoEquip($item[pro skateboard]);
 	}
 	
 	return autoAdv(1, $location[The Middle Chamber]);
@@ -2574,10 +3528,6 @@ boolean L11_defeatEd()
 		return false;
 	}
 
-	if (get_counters("Fortune Cookie", 0, 6) == "Fortune Cookie")
-	{
-		return false;
-	}
 
 	if(item_amount($item[[2334]Holy MacGuffin]) == 1)
 	{
@@ -2585,8 +3535,13 @@ boolean L11_defeatEd()
 		return true;
 	}
 
+	if(is_professor())
+	{
+		return false; //need to wait until werewolf because can't survive combat long enough as a Prof
+	}
+
 	int baseML = monster_level_adjustment();
-	if(auto_my_path() == "Heavy Rains")
+	if(in_heavyrains())
 	{
 		baseML = baseML + 60;
 	}
@@ -2615,8 +3570,8 @@ boolean L11_defeatEd()
 
 	auto_log_info("Time to waste all of Ed's Ka Coins :(", "blue");
 
-	set_property("choiceAdventure976", "1");
-
+	set_property("auto_nextEncounter","Ed the Undying");
+	set_property("auto_nonAdvLoc", true);
 	autoAdv($location[The Lower Chambers]);
 	if(in_pokefam() || in_koe())
 	{

@@ -1,6 +1,11 @@
+boolean is_pete()
+{
+	return my_path() == $path[Avatar of Sneaky Pete];
+}
+
 void pete_initializeSettings()
 {
-	if(my_path() == "Avatar of Sneaky Pete")
+	if(is_pete())
 	{
 		set_property("auto_peteSkills", -1);
 		set_property("auto_wandOfNagamar", false);
@@ -10,7 +15,7 @@ void pete_initializeSettings()
 
 void pete_initializeDay(int day)
 {
-	if(my_path() != "Avatar of Sneaky Pete")
+	if(!is_pete())
 	{
 		return;
 	}
@@ -21,16 +26,6 @@ void pete_initializeDay(int day)
 
 		if(get_property("auto_day_init").to_int() < 2)
 		{
-
-			if(get_property("auto_dickstab").to_boolean() && chateaumantegna_available())
-			{
-				boolean[item] furniture = chateaumantegna_decorations();
-				if(!furniture[$item[Ceiling Fan]])
-				{
-					chateaumantegna_buyStuff($item[Ceiling Fan]);
-				}
-			}
-
 			if(item_amount($item[gym membership card]) > 0)
 			{
 				use(1, $item[gym membership card]);
@@ -40,17 +35,16 @@ void pete_initializeDay(int day)
 			{
 				acquireHermitItem($item[Seal Tooth]);
 			}
-			while(acquireHermitItem($item[Ten-leaf Clover]));
+			while(acquireHermitItem($item[11-leaf Clover]));
 			pullXWhenHaveY($item[hand in glove], 1, 0);
 			pullXWhenHaveY($item[blackberry galoshes], 1, 0);
-			pullXWhenHaveY(whatHiMein(), 1, 0);
 		}
 	}
 	else if(day == 3)
 	{
 		if(get_property("auto_day_init").to_int() < 3)
 		{
-			while(acquireHermitItem($item[Ten-leaf Clover]));
+			while(acquireHermitItem($item[11-leaf Clover]));
 			set_property("auto_day_init", 3);
 		}
 	}
@@ -58,7 +52,7 @@ void pete_initializeDay(int day)
 	{
 		if(get_property("auto_day_init").to_int() < 4)
 		{
-			while(acquireHermitItem($item[Ten-leaf Clover]));
+			while(acquireHermitItem($item[11-leaf Clover]));
 			set_property("auto_day_init", 4);
 		}
 	}
@@ -66,7 +60,7 @@ void pete_initializeDay(int day)
 
 void pete_buySkills()
 {
-	if(my_class() != $class[Avatar of Sneaky Pete])
+	if(!is_pete())
 	{
 		return;
 	}
@@ -299,7 +293,7 @@ int pete_peelOutRemaining()
 
 boolean LM_pete()
 {
-	if(my_path() != "Avatar of Sneaky Pete")
+	if(!is_pete())
 	{
 		return false;
 	}

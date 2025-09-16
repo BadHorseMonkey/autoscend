@@ -5,7 +5,7 @@ boolean L6_friarsGetParts_condition_hardcore()
 
 boolean L6_friarsGetParts()
 {
-	if (internalQuestStatus("questL06Friar") < 0 || internalQuestStatus("questL06Friar") > 2)
+	if(internalQuestStatus("questL06Friar") < 0 || internalQuestStatus("questL06Friar") > 2)
 	{
 		return false;
 	}
@@ -17,9 +17,10 @@ boolean L6_friarsGetParts()
 	if($location[The Dark Heart of the Woods].turns_spent == 0)
 	{
 		visit_url("friars.php?action=friars&pwd");
-		if (isActuallyEd()) {
+		if(isActuallyEd())
+		{
 			// mafia bug doesn't update the quest property when visiting the Friars as Ed
-			// See https://kolmafia.us/showthread.php?24912-minor-questL06Friar-isn-t-changed-to-step1-when-talking-to-the-Friars-as-Ed
+			// see https://kolmafia.us/showthread.php?24912-minor-questL06Friar-isn-t-changed-to-step1-when-talking-to-the-Friars-as-Ed
 			// not that it matters at all, the items we need and locations they're in are the same regardless.
 			// but we can force it to update from the quest log
 			cli_execute("refresh quests");
@@ -43,17 +44,37 @@ boolean L6_friarsGetParts()
 			handleFamiliar($familiar[Robortender]);
 		}
 	}
+	
+	// Don't burn all our NC forces early on d1 unless we are running low on turns.
+	if(my_daycount() == 1 && !isAboutToPowerlevel() && !get_property("auto_getSteelOrgan").to_boolean())
+	{
+		location forced_loc = to_location(get_property("auto_forceNonCombatLocation"));
+		boolean forced_here = $locations[The Dark Neck of the Woods, The Dark Elbow of the Woods, The Dark Heart of the Woods] contains forced_loc;
+		boolean running_low_on_turns = auto_roughExpectedTurnsLeftToday() < 10 + turnsUsedByRemainingNCForcesToday();
+		// Probably need to make sure we still have other stuff to do? Softblock?
+		// Could probably then make this run every day.
+		int total_daily_forces = baseNCForcesToday();
+		if(!forced_here && total_daily_forces > 0 && !running_low_on_turns)
+		{
+			auto_log_debug("Friars: delaying to save NC forces for later today.", "blue");
+			return false;
+		}
+	}
 
 	if(item_amount($item[dodecagram]) == 0)
 	{
 		auto_log_info("Getting Dodecagram", "blue");
-		auto_forceNextNoncombat();
+		boolean NCForced = auto_forceNextNoncombat($location[The Dark Neck of the Woods]);
+		// delay if we are out of NC forcers and haven't run out of things to do
+		if(!NCForced && my_daycount() < get_property("auto_runDayCount").to_int() && !isAboutToPowerlevel() && !get_property("auto_getSteelOrgan").to_boolean()) return false;
 		return autoAdv($location[The Dark Neck of the Woods]);
 	}
 	if(item_amount($item[eldritch butterknife]) == 0)
 	{
 		auto_log_info("Getting Eldritch Butterknife", "blue");
-		auto_forceNextNoncombat();
+		boolean NCForced = auto_forceNextNoncombat($location[The Dark Elbow of the Woods]);
+		// delay if we are out of NC forcers and haven't run out of things to do
+		if(!NCForced && my_daycount() < get_property("auto_runDayCount").to_int() && !isAboutToPowerlevel() && !get_property("auto_getSteelOrgan").to_boolean()) return false;
 		return autoAdv($location[The Dark Elbow of the Woods]);
 	}
 	if(item_amount($item[box of birthday candles]) == 0)
@@ -65,7 +86,9 @@ boolean L6_friarsGetParts()
 			return false;
 		}
 		auto_log_info("Getting Box of Birthday Candles", "blue");
-		auto_forceNextNoncombat();
+		boolean NCForced = auto_forceNextNoncombat($location[The Dark Heart of the Woods]);
+		// delay if we are out of NC forcers and haven't run out of things to do
+		if(!NCForced && my_daycount() < get_property("auto_runDayCount").to_int() && !isAboutToPowerlevel() && !get_property("auto_getSteelOrgan").to_boolean()) return false;
 		return autoAdv($location[The Dark Heart of the Woods]);
 	}
 
@@ -77,11 +100,11 @@ boolean L6_friarsGetParts()
 
 boolean L6_dakotaFanning()
 {
-	if (!get_property("auto_dakotaFanning").to_boolean() || hidden_temple_unlocked())
+	if(!get_property("auto_dakotaFanning").to_boolean() || hidden_temple_unlocked())
 	{
 		return false;
 	}
-	if (internalQuestStatus("questM16Temple") < 0)
+	if(internalQuestStatus("questM16Temple") < 0)
 	{
 		if(my_basestat(my_primestat()) < 35)
 		{
@@ -99,7 +122,7 @@ boolean L6_dakotaFanning()
 
 	if(item_amount($item[Heavy-Duty Bendy Straw]) == 0)
 	{
-		if (get_property("questL06Friar") != "finished")
+		if(get_property("questL06Friar") != "finished")
 		{
 			autoAdv(1, $location[The Dark Heart of the Woods]);
 		}
@@ -126,7 +149,7 @@ boolean L6_dakotaFanning()
 	visit_url("place.php?whichplace=woods&action=woods_dakota");
 	if(get_property("questM16Temple") != "finished")
 	{
-		abort("Elle FanninG quest gnot satisfied.");
+		abort("Could not finish Dakota Fanning quest, aborting.");
 	}
 	return true;
 }

@@ -38,28 +38,21 @@ boolean snojoFightAvailable()
 		standard[2] = "Muscle";
 		standard[3] = "Moxie";
 
-		if(in_boris() && (possessEquipment($item[Boris\'s Helm]) || possessEquipment($item[Boris\'s Helm (Askew)])))
+		if(is_boris() && (possessEquipment($item[Boris\'s Helm]) || possessEquipment($item[Boris\'s Helm (Askew)])))
 		{
 			standard[0] = "Muscle";
 			standard[1] = "Mysticality";
 			standard[2] = "Moxie";
 			standard[3] = "Mysticality";
 		}
-		if(my_path() == "Community Service")
+		if(in_lta())
 		{
 			standard[0] = "Mysticality";
 			standard[1] = "Moxie";
 			standard[2] = "Muscle";
 			standard[3] = "Mysticality";
 		}
-		if(my_path() == "License to Adventure")
-		{
-			standard[0] = "Mysticality";
-			standard[1] = "Moxie";
-			standard[2] = "Muscle";
-			standard[3] = "Mysticality";
-		}
-		if(is_Jarlsberg())
+		if(is_jarlsberg())
 		{
 			standard[0] = "Mysticality";
 			standard[1] = "Moxie";
@@ -100,12 +93,13 @@ boolean snojoFightAvailable()
 
 boolean auto_haveSourceTerminal()
 {
-	if(!is_unrestricted($item[Source Terminal]))
+	item terminal = wrap_item($item[Source Terminal]);
+	if(!is_unrestricted(terminal) && !in_lol())
 	{
 		return false;
 	}
 	static boolean didCheck = false;
-	if((auto_my_path() == "Nuclear Autumn") && !didCheck)
+	if(in_nuclear() && !didCheck)
 	{
 		didCheck = true;
 		string temp = visit_url("place.php?whichplace=falloutshelter&action=vault_term");
@@ -152,7 +146,7 @@ boolean auto_sourceTerminalRequest(string request)
 	//"campground.php?action=terminal&hack=enhance items.enh"
 	if(auto_haveSourceTerminal())
 	{
-		if(auto_my_path() == "Nuclear Autumn")
+		if(in_nuclear())
 		{
 			string temp = visit_url("place.php?whichplace=falloutshelter&action=vault_term");
 		}
@@ -476,6 +470,7 @@ boolean auto_advWitchess(string target, string option)
 	}
 	temp = visit_url("choice.php?pwd=&option=2&whichchoice=1182");
 
+	set_property("auto_nextEncounter",to_string((to_monster(goal))));
 	string[int] pages;
 	pages[0] = "campground.php?action=witchess";
 	pages[1] = "choice.php?whichchoice=1181&pwd=&option=1";
@@ -506,7 +501,7 @@ int auto_advWitchessTargets(string target)
 		return 1938;
 	}
 
-	if((target == 1942) && (auto_my_path() == "Teetotaler"))
+	if((target == 1942) && (my_path() == $path[Teetotaler]))
 	{
 		return 1936;
 	}
@@ -536,14 +531,6 @@ int auto_advWitchessTargets(string target)
 
 boolean witchessFights()
 {
-	if(my_path() == "Community Service")
-	{
-		return false;
-	}
-	if(cs_witchess())
-	{
-		return true;
-	}
 	if(!auto_haveWitchess())
 	{
 		return false;
@@ -553,36 +540,31 @@ boolean witchessFights()
 		return false;
 	}
 
-	if(in_gnoob())
+	if(in_gnoob() || in_lta())
 	{
 		return auto_advWitchess("ml");
 	}
-
-	if(auto_my_path() == "License to Adventure")
-	{
-		return auto_advWitchess("ml");
-	}
-
+	
 	switch(my_daycount())
 	{
 	case 1:
-		if((item_amount($item[Greek Fire]) == 0) && (my_path() != "Community Service"))
+		if((item_amount($item[Greek Fire]) == 0))
 		{
 			return auto_advWitchess("ml");
 		}
 		return auto_advWitchess("booze");
 	case 2:
-		if((get_property("sidequestNunsCompleted") == "none") && (item_amount($item[Jumping Horseradish]) == 0))
+		if((get_property("sidequestNunsCompleted") == "none") && (get_property("auto_skipNuns") == "false") && (item_amount($item[Jumping Horseradish]) == 0))
 		{
 			return auto_advWitchess("meat");
 		}
 	case 3:
-		if((get_property("sidequestNunsCompleted") == "none") && (item_amount($item[Jumping Horseradish]) == 0))
+		if((get_property("sidequestNunsCompleted") == "none") && (get_property("auto_skipNuns") == "false") && (item_amount($item[Jumping Horseradish]) == 0))
 		{
 			return auto_advWitchess("meat");
 		}
 	case 4:
-		if((get_property("sidequestNunsCompleted") == "none") && (item_amount($item[Jumping Horseradish]) == 0))
+		if((get_property("sidequestNunsCompleted") == "none") && (get_property("auto_skipNuns") == "false") && (item_amount($item[Jumping Horseradish]) == 0))
 		{
 			return auto_advWitchess("meat");
 		}
@@ -622,7 +604,7 @@ boolean auto_doPrecinct()
 	{
 		return false;
 	}
-	if(svn_info("Ezandora-Detective-Solver-branches-Release").last_changed_rev > 0)
+	if(git_exists("Ezandora-Detective-Solver"))
 	{
 		//Assume if someone has this installed that they want to use it.
 		cli_execute("ash import<Detective Solver.ash> solveAllCases(false);");
@@ -1018,11 +1000,11 @@ boolean LX_ghostBusting()
 	{
 		return false;
 	}
-	if(auto_my_path() == "Community Service" && my_daycount() == 1 && goal == $location[The Spooky Forest])
+	if(goal == $location[Inside The Palindome] && !possessEquipment($item[Talisman O\' Namsilat]))
 	{
 		return false;
 	}
-	if(goal == $location[Inside The Palindome] && !possessEquipment($item[Talisman O\' Namsilat]))
+	if(is_professor())
 	{
 		return false;
 	}
@@ -1127,7 +1109,7 @@ boolean timeSpinnerGet(string goal)
 		return false;
 	}
 
-	if(svn_info("Ezandora-Far-Future-branches-Release").last_changed_rev > 0)
+	if(git_exists("Ezandora-Far-Future"))
 	{
 		//Required by dependencies
 		cli_execute("FarFuture " + goal);
@@ -1180,19 +1162,49 @@ boolean timeSpinnerAdventure(string option)
 	return autoAdvBypass(0, pages, $location[Noob Cave], option);
 }
 
-
-boolean timeSpinnerCombat(monster goal)
+boolean canTimeSpinnerMonster(monster mon)
 {
-	return timeSpinnerCombat(goal, "");
-}
-
-boolean timeSpinnerCombat(monster goal, string option)
-{
-	//spend 3 minutes to Travel to a Recent Fight
-	if(timeSpinnerRemaining(true) < 3)
+	// Can only time spinner summon copyable monsters
+	if(!mon.copyable || mon.id < 0)
 	{
 		return false;
 	}
+
+	string name = mon.to_string();
+	foreach loc in $locations[]
+	{
+		if(contains_text(loc.combat_queue, name)) return true;
+	}
+	return false;
+}
+
+boolean timeSpinnerCombat(monster goal)
+{
+	return timeSpinnerCombat(goal, "", false);
+}
+
+boolean timeSpinnerCombat(monster goal, boolean speculative)
+{
+	return timeSpinnerCombat(goal, "", speculative);
+}
+
+boolean timeSpinnerCombat(monster goal, string option, boolean speculative)
+{
+	//spend 3 minutes to Travel to a Recent Fight
+	if(timeSpinnerRemaining(!speculative) < 3)
+	{
+		return false;
+	}
+	if(!canTimeSpinnerMonster(goal))
+	{
+		return false;
+	}
+	if(speculative)
+	{
+		// error checking passed, assume rest will work
+		return true;
+	}
+	auto_log_info("Using time spinner to summon " + goal.name, "blue");
 	string[int] pages;
 	pages[0] = "inv_use.php?pwd=&which=3&whichitem=9104";
 	pages[1] = "choice.php?pwd=&whichchoice=1195&option=1";
@@ -1211,6 +1223,51 @@ boolean timeSpinnerCombat(monster goal, string option)
 		abort("Time-Spinner combat failed and we were unable to leave the Time-Spinner");
 	}
 	return false;
+}
+
+void auto_chapeau()
+{
+	if(!can_equip($item[no hat]))
+	{
+		//requires 150 Moxie to wear, so will stop at this check alone most of the time, except in BIG! or level 13 moxie class
+		return;
+	}
+	if(!auto_have_skill($skill[Ceci N\'Est Pas Un Chapeau]))
+	{
+		return;
+	}
+	if(my_mp() < mp_cost($skill[Ceci N\'Est Pas Un Chapeau]))
+	{
+		return;
+	}
+	if(possessEquipment($item[no hat]) || !auto_can_equip($item[no hat]))
+	{
+		return;
+	}
+	
+	//300 MP cost is high and non sauceror classes that rely on meat for MP may need to check reserve first
+	boolean doGetNoHat;
+	if(my_mp() >= 100 + mp_cost($skill[Ceci N\'Est Pas Un Chapeau]))
+	{
+		doGetNoHat = true;
+	}
+	else if(my_mp() >= 32 + mp_cost($skill[Ceci N\'Est Pas Un Chapeau]) && mp_regen() >= 32)
+	{
+		doGetNoHat = true;
+	}
+	else
+	{
+		int minimumMeat = meatReserve() + (my_class() == $class[Sauceror] ? 500 : 2000);
+		if(my_meat() >= minimumMeat)
+		{
+			doGetNoHat = true;
+		}
+	}
+	
+	if(doGetNoHat)
+	{
+		use_skill(1, $skill[Ceci N\'Est Pas Un Chapeau]);
+	}
 }
 
 boolean rethinkingCandyList()

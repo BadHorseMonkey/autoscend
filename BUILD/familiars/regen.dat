@@ -8,6 +8,8 @@
 Galloping Grill	prop:_hotAshesDrops<5
 # starfish that drops 5 tokens a day that can be exchanged for a spleen consumable that gives adv
 Rogue Program	prop:_tokenDrops<5
+# Fairyeverything
+Jill-of-All-Trades
 # Fairywhelps. Weight is better used on these and 2 of them drop useful items.
 Pocket Professor
 Garbage Fire
@@ -16,6 +18,7 @@ XO Skeleton
 Lil' Barrel Mimic	item:brass bung spigot>0
 # It's a starfish with reduced activation rate, except it ALWAYS attacks on turn one, so that's probably more hits per battle on average in short battles? oh, and it's a sombrero too
 Galloping Grill
+Patriotic Eagle
 # A super starfish (50% activation instead of 33%)
 Sausage Golem
 # A slightly boosted starfish, for pastamancers
@@ -45,11 +48,13 @@ Cotton Candy Carnie
 # Slightly better whelp for saucerors
 Pet Cheezling	class:Sauceror
 # Whelps with a multiplier, why not I guess
+Mini-Trainbot
 #Mutant Gila Monster	grimdark:0
 #Mutant Gila Monster	grimdark:1
 # Marginally special whelps
 #Mutant Gila Monster	grimdark:2
 Pottery Barn Owl
+Peace Turkey
 # Regular old whelps
 Pet Cheezling
 Ghuol Whelp

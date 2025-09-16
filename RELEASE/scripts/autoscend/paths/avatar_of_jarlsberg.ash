@@ -1,11 +1,11 @@
-boolean is_Jarlsberg()
+boolean is_jarlsberg()
 {
-	return (my_class() == $class[Avatar of Jarlsberg] || my_path() == "Avatar of Jarlsberg");
+	return my_path() == $path[Avatar of Jarlsberg];
 }
 
 void jarlsberg_initializeSettings()
 {
-    	if(is_Jarlsberg())
+    	if(is_jarlsberg())
 	{
 		auto_log_info("Initializing Avatar of Jarlsberg settings", "blue");
 		set_property("auto_wandOfNagamar", false);
@@ -14,7 +14,7 @@ void jarlsberg_initializeSettings()
 
 void jarlsberg_initializeDay(int day)
 {
-	if(!is_Jarlsberg())
+	if(!is_jarlsberg())
 	{
 		return;
 	}
@@ -25,16 +25,6 @@ void jarlsberg_initializeDay(int day)
 
 		if(get_property("auto_day_init").to_int() < 2)
 		{
-
-			if(get_property("auto_dickstab").to_boolean() && chateaumantegna_available())
-			{
-				boolean[item] furniture = chateaumantegna_decorations();
-				if(!furniture[$item[Ceiling Fan]])
-				{
-					chateaumantegna_buyStuff($item[Ceiling Fan]);
-				}
-			}
-
 			if(item_amount($item[gym membership card]) > 0)
 			{
 				use(1, $item[gym membership card]);
@@ -44,7 +34,7 @@ void jarlsberg_initializeDay(int day)
 			{
 				acquireHermitItem($item[Seal Tooth]);
 			}
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			pullXWhenHaveY($item[hand in glove], 1, 0);
 			pullXWhenHaveY($item[blackberry galoshes], 1, 0); 
 		}
@@ -53,7 +43,7 @@ void jarlsberg_initializeDay(int day)
 	{
 		if(get_property("auto_day_init").to_int() < 3)
 		{
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			set_property("auto_day_init", 3);
 		}
 	}
@@ -61,7 +51,7 @@ void jarlsberg_initializeDay(int day)
 	{
 		if(get_property("auto_day_init").to_int() < 4)
 		{
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			set_property("auto_day_init", 4);
 		}
 	}
@@ -69,7 +59,7 @@ void jarlsberg_initializeDay(int day)
 
 void jarlsberg_buySkills() //Not certain of Skill Priority Order. Current is a good start, will see how it goes.
 {
-	if(!is_Jarlsberg())
+	if(!is_jarlsberg())
 	{
 		return;
 	}
@@ -129,7 +119,7 @@ boolean LM_jarlsberg()
 	//this function is called early once every loop of doTasks() in autoscend.ash
 	//if something in this function returns true then it will restart the loop and get called again.
 	
-	if(!is_Jarlsberg())
+	if(!is_jarlsberg())
 	{
 		return false;
 	}

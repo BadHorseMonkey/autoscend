@@ -1,13 +1,11 @@
-void bat_startAscension()
+boolean in_darkGyffte()
 {
-	if(my_path() == "Dark Gyffte") {
-		visit_url("choice.php?whichchoice=1343&option=1");
-		bat_reallyPickSkills(20);
-	}
+	return my_path() == $path[Dark Gyffte];
 }
+
 void bat_initializeSettings()
 {
-	if(my_path() == "Dark Gyffte")
+	if(in_darkGyffte())
 	{
 		set_property("auto_getSteelOrgan", false);
 		set_property("auto_grimstoneFancyOilPainting", false);
@@ -24,12 +22,21 @@ void bat_initializeSettings()
 
 boolean bat_wantHowl(location loc)
 {
-	if(!have_skill($skill[Baleful Howl]))
+	if(!auto_have_skill($skill[Baleful Howl]))
 	{
 		return false;
 	}
 	if(auto_banishesUsedAt(loc) contains "baleful howl")
 	{
+		return false;
+	}
+	if(get_property("_balefulHowlUses").to_int() >= 10)
+	{
+		return false;
+	}
+	if(my_hp() <= hp_cost($skill[Baleful Howl]))
+	{
+		// DG doesn't heal in pre-adv, so current HP is how much we will have when we adv
 		return false;
 	}
 	int[monster] banished = banishedMonsters();
@@ -45,7 +52,7 @@ boolean bat_wantHowl(location loc)
 
 boolean bat_formNone()
 {
-	if(my_class() != $class[Vampyre]) return false;
+	if(!in_darkGyffte()) return false;
 	if(get_property("auto_bat_desiredForm") != "")
 	{
 		set_property("auto_bat_desiredForm", "");
@@ -55,7 +62,7 @@ boolean bat_formNone()
 
 boolean bat_formWolf(boolean speculative)
 {
-	if(my_class() != $class[Vampyre]) return false;
+	if(!in_darkGyffte()) return false;
 	set_property("auto_bat_desiredForm", "wolf");
 	return bat_switchForm($effect[Wolf Form], speculative);
 }
@@ -67,7 +74,7 @@ boolean bat_formWolf()
 
 boolean bat_formMist(boolean speculative)
 {
-	if(my_class() != $class[Vampyre]) return false;
+	if(!in_darkGyffte()) return false;
 	set_property("auto_bat_desiredForm", "mist");
 	return bat_switchForm($effect[Mist Form], speculative);
 }
@@ -79,7 +86,7 @@ boolean bat_formMist()
 
 boolean bat_formBats(boolean speculative)
 {
-	if(my_class() != $class[Vampyre]) return false;
+	if(!in_darkGyffte()) return false;
 	set_property("auto_bat_desiredForm", "bats");
 	return bat_switchForm($effect[Bats Form], speculative);
 }
@@ -126,7 +133,7 @@ boolean bat_switchForm(effect form)
 
 boolean bat_formPreAdventure()
 {
-	if(my_class() != $class[Vampyre]) return false;
+	if(!in_darkGyffte()) return false;
 
 	string desiredForm = get_property("auto_bat_desiredForm");
 	effect form;
@@ -150,7 +157,7 @@ boolean bat_formPreAdventure()
 
 void bat_initializeSession()
 {
-	if(my_class() == $class[Vampyre])
+	if(in_darkGyffte())
 	{
 		set_property("auto_mpAutoRecovery", get_property("mpAutoRecovery"));
 		set_property("auto_mpAutoRecoveryTarget", get_property("mpAutoRecoveryTarget"));
@@ -161,7 +168,7 @@ void bat_initializeSession()
 
 void bat_terminateSession()
 {
-	if(my_class() == $class[Vampyre])
+	if(in_darkGyffte())
 	{
 		set_property("mpAutoRecovery", get_property("auto_mpAutoRecovery"));
 		set_property("auto_mpAutoRecovery", 0.0);
@@ -172,7 +179,7 @@ void bat_terminateSession()
 
 void bat_initializeDay(int day)
 {
-	if(my_path() != "Dark Gyffte")
+	if(!in_darkGyffte())
 	{
 		return;
 	}
@@ -324,7 +331,7 @@ void bat_reallyPickSkills(int hpLeft, boolean[skill] requiredSkills)
 {
 	// Why Astral Spirit? When entering a DG run, before exiting the initial
 	// noncombat and Torpor, that's what KoLmafia thinks you are.
-	if(my_class() != $class[Vampyre] && to_string(my_class()) != "Astral Spirit")
+	if(!in_darkGyffte() && to_string(my_class()) != "Astral Spirit")
 	{
 		return;
 	}
@@ -378,12 +385,12 @@ phylum bat_ensorceledMonster() //returns phylum of current Ensorceled Monster (i
 
 boolean bat_shouldEnsorcel(monster m)
 {
-	if(my_class() != $class[Vampyre] || !auto_have_skill($skill[Ensorcel]))
+	if(!in_darkGyffte() || !auto_have_skill($skill[Ensorcel]))
 		return false;
 
 	// until we have a way to tell what we already have as an ensorcelee, just ensorcel goblins
 	// to help avoid getting beaten up...
-	if(m.monster_phylum() == $phylum[goblin] && !isFreeMonster(m) && !bat_haveEnsorcelee()) //stop wasting additional Ensorcel casts once we already have an Ensorcelee
+	if(m.monster_phylum() == $phylum[goblin] && !isFreeMonster(m, my_location()) && !bat_haveEnsorcelee()) //stop wasting additional Ensorcel casts once we already have an Ensorcelee
 		return true;
 
 	//TODO code for getting other types of monster (beasts / bugs presumably) where appropriate.
@@ -393,7 +400,7 @@ boolean bat_shouldEnsorcel(monster m)
 
 int bat_creatable_amount(item desired)
 {
-	if(my_class() != $class[Vampyre])
+	if(!in_darkGyffte())
 		return 0;
 	if(item_amount($item[blood bag]) == 0)
 		return 0;
@@ -401,19 +408,88 @@ int bat_creatable_amount(item desired)
 	switch(desired)
 	{
 		case $item[bloodstick]:
+			if(item_amount($item[wad of dough]) == 0)
+			{
+				pullXWhenHaveY($item[wad of dough],1,0);
+			}	
+			if(item_amount($item[wad of dough]) == 0)
+			{
+				auto_buyUpTo(1, $item[wad of dough]);
+			}	
+			return creatable_amount(desired);
 		case $item[blood snowcone]:
+			if(item_amount($item[plain snowcone]) == 0)
+			{
+				pullXWhenHaveY($item[plain snowcone],1,0);
+			}	
+			if(item_amount($item[plain snowcone]) == 0)
+			{
+				auto_buyUpTo(1, $item[plain snowcone]);
+			}
+			return creatable_amount(desired);
 		case $item[blood roll-up]:
+			if(item_amount($item[blackberry]) == 0)
+			{
+				pullXWhenHaveY($item[blackberry],1,0);
+			}	
+			return creatable_amount(desired);
 		case $item[bottle of Sanguiovese]:
+			if(item_amount($item[fermenting powder]) == 0)
+			{
+				pullXWhenHaveY($item[fermenting powder],1,0);
+			}	
+			return creatable_amount(desired);
 		case $item[mulled blood]:
+			if(item_amount($item[spices]) == 0)
+			{
+				pullXWhenHaveY($item[spices],1,0);
+			}	
+			return creatable_amount(desired);
 		case $item[Red Russian]:
+			if(item_amount($item[glass of goat\'s milk]) == 0)
+			{
+				pullXWhenHaveY($item[glass of goat\'s milk],1,0);
+			}	
 			return creatable_amount(desired);
 		case $item[actual blood sausage]:
+			foreach it in $items[batgut, ratgut]
+			{
+				if(item_amount(it) == 0)
+				{
+					if(pullXWhenHaveY(it,1,0))
+						break;
+				}
+			}
 			return min(item_amount($item[blood bag]), total_items($items[batgut, ratgut]));
 		case $item[blood-soaked sponge cake]:
-			return min(item_amount($item[blood bag]), total_items($items[filthy poultice, gauze garter]));
+			foreach it in $items[gauze garter, filthy poultice]
+			{
+				if(item_amount(it) == 0)
+				{
+					if(pullXWhenHaveY(it,1,0))
+						break;
+				}
+			}
+			return min(item_amount($item[blood bag]), total_items($items[gauze garter, filthy poultice]));
 		case $item[dusty bottle of blood]:
+			foreach it in $items[dusty bottle of Merlot, dusty bottle of Port, dusty bottle of Pinot Noir, dusty bottle of Zinfandel, dusty bottle of Marsala, dusty bottle of Muscat]
+			{
+				if(item_amount(it) == 0)
+				{
+					if(pullXWhenHaveY(it,1,0))
+						break;
+				}
+			}
 			return min(item_amount($item[blood bag]), total_items($items[dusty bottle of Merlot, dusty bottle of Port, dusty bottle of Pinot Noir, dusty bottle of Zinfandel, dusty bottle of Marsala, dusty bottle of Muscat]));
 		case $item[vampagne]:
+			foreach it in $items[carbonated soy milk, monstar energy beverage]
+			{
+				if(item_amount(it) == 0)
+				{
+					if(pullXWhenHaveY(it,1,0))
+						break;
+				}
+			}
 			return min(item_amount($item[blood bag]), total_items($items[carbonated soy milk, monstar energy beverage]));
 	}
 	auto_log_warning("Hmm, " + desired + " isn't a Vampyre consumable", "red");
@@ -422,7 +498,7 @@ int bat_creatable_amount(item desired)
 
 boolean bat_multicraft(string mode, boolean [item] options)
 {
-	if(my_class() != $class[Vampyre])
+	if(!in_darkGyffte())
 		return false;
 	if(item_amount($item[blood bag]) == 0)
 		return false;
@@ -441,7 +517,7 @@ boolean bat_multicraft(string mode, boolean [item] options)
 
 boolean bat_cook(item desired)
 {
-	if(my_class() != $class[Vampyre])
+	if(!in_darkGyffte())
 		return false;
 	if(item_amount($item[blood bag]) == 0)
 		return false;
@@ -470,7 +546,7 @@ boolean bat_cook(item desired)
 
 boolean bat_consumption()
 {
-	if(my_class() != $class[Vampyre])
+	if(!in_darkGyffte())
 		return false;
 
 	if(possessOutfit("War Hippy Fatigues") && is_accessible($coinmaster[Dimemaster]))
@@ -492,9 +568,14 @@ boolean bat_consumption()
 	{
 		foreach it in its
 		{
-			if(bat_creatable_amount(it) > 0 || available_amount(it) > 0)
+			if(available_amount(it) == 0)
 			{
-				if (available_amount(it) == 0)
+				//try to pull it if we don't have any on hand. Preferable to crafting when possible
+				pullXWhenHaveY(it,1,0);
+			}
+			if(available_amount(it) > 0 || bat_creatable_amount(it) > 0)
+			{
+				if(available_amount(it) == 0)
 					bat_cook(it);
 				if(it.fullness > 0)
 					autoEat(1, it);
@@ -513,10 +594,35 @@ boolean bat_consumption()
 		return false;
 	}
 
-	if ((fullness_left() > 0) && (get_property("availableQuarters").to_int() < 2))
+	//buy best consumable mats from NPC if we can
+	if(auto_warSide() == "fratboy")
 	{
-		pullXWhenHaveY($item[gauze garter], 1, 0);
+		if ((fullness_left() > 0) && (item_amount($item[gauze garter]) == 0) && $coinmaster[Quartersmaster].available_tokens >= 2)
+		{
+			cli_execute("make 1 gauze garter");
+		}
+		if ((inebriety_left() > 0) && (item_amount($item[monstar energy beverage]) == 0) && $coinmaster[Quartersmaster].available_tokens >= 3)
+		{
+			cli_execute("make 1 monstar energy beverage");
+		}
 	}
+	else
+	{
+		if ((fullness_left() > 0) && (item_amount($item[filthy poultice]) == 0) && $coinmaster[Dimemaster].available_tokens >= 2)
+		{
+			cli_execute("make 1 filthy poultice");
+		}
+		if ((inebriety_left() > 0) && (item_amount($item[carbonated soy milk]) == 0) && $coinmaster[Dimemaster].available_tokens >= 3)
+		{
+			cli_execute("make 1 carbonated soy milk");
+		}
+	}
+
+	if (fullness_left() > 0)
+	{
+		pullXWhenHaveY($item[dieting pill], 1, 0);
+	}
+
 	if ((my_level() >= 7) &&
 		(spleen_left() >= 3) &&
 		(fullness_left() >= 2) &&
@@ -533,30 +639,39 @@ boolean bat_consumption()
 			return true;
 		}
 	}
-	if (item_amount($item[blood bag]) > 0)
+
+	// attempt to fill organs with best consumables all the time, don't wait to be at low adventure count
+	if (inebriety_left() > 0)
 	{
-		if (inebriety_left() > 0)
+		if(consume_first($items[vampagne]))
+			return true;
+	}
+	if (fullness_left() > 0)
+	{
+		if(consume_first($items[blood-soaked sponge cake]))
+			return true;
+	}
+
+	if (my_adventures() <= 8)
+	{
+		// if both organs have space, prioritize high value items instead of the usual booze before food algorithm
+		// don't auto consume bottle of Sanguiovese or bloodstick unless we're down to one adventure
+		if (inebriety_left() > 0 && fullness_left() > 0)
 		{
-			if(consume_first($items[vampagne]))
+			if(consume_first($items[vampagne, blood-soaked sponge cake,
+									 dusty bottle of blood, blood roll-up,
+									 Red Russian, blood snowcone, 
+									 mulled blood, actual blood sausage]))
 				return true;
 		}
-	}
-	if (my_adventures() <= 8 && item_amount($item[blood bag]) > 0)
-	{
-		if (inebriety_left() > 0)
+		else if (inebriety_left() > 0)
 		{
-			if (get_property("availableQuarters").to_int() < 3)
-			{
-				pullXWhenHaveY($item[monstar energy beverage], 1, 0);
-			}
-			// don't auto consume bottle of Sanguiovese, only drink those if we're down to one adventure
 			if(consume_first($items[vampagne, dusty bottle of blood, Red Russian, mulled blood]))
 				return true;
 		}
-		if (fullness_left() > 0)
+		else if (fullness_left() > 0)
 		{
-			// don't auto consume bloodstick, only eat those if we're down to one adventure AFTER booze
-			if(consume_first($items[blood-soaked sponge cake, blood roll-up, blood snowcone, actual blood sausage, ]))
+			if(consume_first($items[blood-soaked sponge cake, blood roll-up, blood snowcone, actual blood sausage]))
 				return true;
 		}
 	}
@@ -589,7 +704,7 @@ boolean bat_skillValid(skill sk)
 	if($skills[Piercing Gaze, Perceive Soul, Ensorcel, Spectral Awareness] contains sk && have_effect($effect[Wolf Form]) + have_effect($effect[Mist Form]) > 0)
 		return false;
 
-	if((mp_cost(sk) > 0) && (my_class() == $class[Vampyre]))
+	if((mp_cost(sk) > 0) && in_darkGyffte())
 		return false;
 
 	return true;
@@ -610,7 +725,7 @@ boolean bat_tryBloodBank()
 
 boolean LM_batpath()
 {
-	if(my_class() != $class[Vampyre])
+	if(!in_darkGyffte())
 		return false;
 
 	if(bat_remainingBaseHP() >= 70 && bat_shouldPickSkills(20))

@@ -21,7 +21,7 @@ void bedtime_still()
 		//tonic water is an excellent MP restorer and also can be used to craft some drinks.
 		if(target == $item[none] && my_meat() > meatReserve() + 100 && isGeneralStoreAvailable())
 		{
-			if(buyUpTo(1, $item[soda water]))
+			if(auto_buyUpTo(1, $item[soda water]))
 			{
 				target = $item[tonic water];
 			}
@@ -69,13 +69,36 @@ void bedtime_still()
 	}
 }
 
+boolean bedtime_spleen()
+{
+	boolean[item] to_try = $items[Breathitin&trade;, Extrovermectin&trade;,
+	  scoop of pre-workout powder, phosphor traces, Homebodyl&trade;, energized spores];
+
+	boolean done = false;
+	while (spleen_left() > 0 && !done)
+	{
+		boolean consumed_this_loop = false;
+		foreach it in to_try
+		{
+			if (canChew(it) && available_amount(it) > 0 && it.spleen <= spleen_left())
+			{
+				autoChew(1,it);
+				consumed_this_loop = true;
+				break;
+			}
+		}
+		if (!consumed_this_loop) { done = true; }
+	}
+	return spleen_left()==0;
+}
+
 int pullsNeeded(string data)
 {
 	if(inAftercore())
 	{
 		return 0;
 	}
-	if (isActuallyEd() || auto_my_path() == "Community Service")
+	if (isActuallyEd())
 	{
 		return 0;
 	}
@@ -179,12 +202,6 @@ int pullsNeeded(string data)
 			}
 		}
 
-		if(item_amount($item[Digital Key]) == 0 && whitePixelCount() < 30)
-		{
-			auto_log_warning("Need " + (30-whitePixelCount()) + " white pixels.", "red");
-			count = count + (30 - whitePixelCount());
-		}
-
 		if(item_amount($item[skeleton key]) == 0)
 		{
 			if((item_amount($item[skeleton bone]) > 0) && (item_amount($item[loose teeth]) > 0))
@@ -223,6 +240,291 @@ int pullsNeeded(string data)
 	return count;
 }
 
+float rollover_value(item it)
+{
+	if(it == $item[none])
+	{
+		return 0.0;
+	}
+	float retval = numeric_modifier(it, "adventures");
+	if(hippy_stone_broken() && my_path() != $path[Oxygenarian])
+	{
+		retval += get_property("auto_bedtime_pulls_pvp_multi").to_float() * numeric_modifier(it, "PvP Fights");
+	}
+	if(it == $item[your cowboy boots])		//your cowboy boot's add-ons are considered seperate items in their own slots
+	{
+		retval += rollover_value($slot[bootspur].equipped_item());
+		retval += rollover_value($slot[bootskin].equipped_item());
+	}
+	return retval;
+}
+
+float rollover_improvement(item it, slot sl)
+{
+	//some items can go in multiple slots so we need to specify which slot we want to compare it to.
+	//we can then compare such items to multiple slots and find the best slot for it
+	if(sl == $slot[weapon] && weapon_hands(it) > 1 && weapon_hands(equipped_item(sl)) <= 1)
+	{
+		//2h weapon must compare to value of both hands
+		return rollover_value(it) - rollover_value(equipped_item(sl)) - rollover_value(equipped_item($slot[off-hand]));
+	}
+	if(sl == $slot[off-hand] && weapon_hands(equipped_item($slot[weapon])) > 1)
+	{
+		//offhand slot must compare to 2h weapon and not empty offhand. TODO ?would need averaged values with best owned or pullable 1h
+		return rollover_value(it) - rollover_value(equipped_item($slot[weapon]));
+	}
+	if(it == $item[time halo])
+	{
+		//time halo is special. cannot have any weapons or off-hand items equipped. TODO ?compare hand slots and replacement accessory against time halo
+		return rollover_value(it) - rollover_value(equipped_item(sl)) - rollover_value(equipped_item($slot[weapon])) - rollover_value(equipped_item($slot[off-hand]));
+	}
+	return rollover_value(it) - rollover_value(equipped_item(sl));
+}
+
+void bedtime_pulls_rollover_equip(float desirability)
+{
+	//scan through all pullable items for items that have a better rollover adv gain than currently best equipped item.
+	
+	// can't pull gear in Legacy of Loathing
+	if(in_lol())
+	{
+		return;
+	}
+
+	equipRollover(true);
+	for(int i=0; i<10; i++)
+	{
+		if(pulls_remaining() == 0)
+		{
+			break;	//we are out of pulls
+		}
+		
+		item[slot] best;
+		item best1hweapon;
+		item very_best;
+		float very_best_val;
+		float very_best_improvement;
+		slot very_best_slot;
+		slot a1 = $slot[acc1];
+		slot a2 = $slot[acc2];
+		slot a3 = $slot[acc3];
+		
+		//we will need to know which accessory slot is the worst
+		slot worst_acc_slot = a1;
+		if(rollover_value(equipped_item(worst_acc_slot)) > rollover_value(equipped_item(a2)))
+		{
+			worst_acc_slot = $slot[acc2];
+		}
+		if(rollover_value(equipped_item(worst_acc_slot)) > rollover_value(equipped_item(a3)))
+		{
+			worst_acc_slot = $slot[acc3];
+		}
+		
+		//populate best with current equipment as a baseline
+		foreach sl in $slots[hat, back, shirt, pants, acc1, familiar]
+		{
+			//populating with current item as baseline is necessary for accessories. harmful for weapon/off-hand. and harmless elsewhere.
+			if(sl == $slot[acc1])
+			{
+				sl = worst_acc_slot;
+			}
+			best[sl] = equipped_item(sl);
+		}
+		
+		//find the best item for each slot
+		foreach it in $items[]
+		{
+			slot sl = it.to_slot();
+			if(!($slots[hat, weapon, off-hand, back, shirt, pants, acc1, familiar] contains sl)) continue;	//exotic slot or not equip
+			if(!possessEquipment(it) && !canPull(it,true)) continue;		//do not have it and can not pull it.
+			if(!auto_can_equip(it)) continue;		//we can not equip it
+			string bonusOnlyForClass = string_modifier(it,"Class");
+			if(bonusOnlyForClass != "" && bonusOnlyForClass != my_class().to_string()) continue;	//can't get benefit of it
+			
+			if($slot[familiar] == sl && !pathHasFamiliar())
+			{
+				//in paths without familiar do not pull familiar equip.
+				if(!in_robot())
+				{
+					continue;
+				}
+			}
+			if($slot[acc1] == sl)
+			{
+				//all accessories always return acc1 from to_slot() function.
+				//since we are pulling one item at a time we only want to look at the worst slot each time
+				//we just need to make sure that equip conflicts do not arise.
+				sl = worst_acc_slot;
+				
+				if(boolean_modifier(it, "Single Equip"))
+				{
+					if(equipped_amount(it) > 0 && best[sl] != it)
+					{
+						//we have it equipped but not in the worst slot. So exclude it from optimizing the worst slot.
+						continue;
+					}
+				}
+				
+				if(is_watch(it))	//watches conflict with each other. only one watch of any kind can be used
+				{
+					if(equipped_amount(it) > 0 && !is_watch(best[sl]))
+					{
+						//we have a watch equipped but not in the worst slot. So exclude it from optimizing the worst slot.
+						continue;
+					}
+				}
+				
+				if(it == $item[time halo])	//needs special check later
+				{
+					continue;
+				}
+				
+				//can we even pull another copy of this accessory?
+				if(equipped_amount(it) > 0 && best[sl] != it && !canPull(it,true))
+				{
+					continue;
+				}
+				
+				if(rollover_value(it) > rollover_value(best[sl]))
+				{
+					best[sl] = it;
+				}
+			}
+			else if($slot[weapon] == sl)
+			{
+				//weapon and off-hand slots might conflict and require special handling
+				//two or more handed weapons just need to make sure they are better than best weapon and off-hand combined
+				if(weapon_hands(it) > 1)
+				{
+					if(weapon_hands(best[$slot[weapon]]) > 1)
+					{
+						//if best weapon is already more than 1 handed, must not add off-hand to that weapon
+						if(rollover_value(it) > rollover_value(best[$slot[weapon]]) && rollover_value(it) > rollover_value(best[$slot[off-hand]]))
+						{
+							best[sl] = it;
+						}
+					}
+					else if(rollover_value(it) > rollover_value(best[$slot[weapon]]) + rollover_value(best[$slot[off-hand]]))	//for non conflicting slots. calculate normally
+					{
+						//remember best 1h to compare again when better off-hand slots are found
+						best1hweapon = best[$slot[weapon]];
+						//there is no need to change offhand target since we pull one item at a time. in fact we prefer offhand to retain an independent value
+						best[sl] = it;
+					}
+				}
+				else if(weapon_hands(it) == 1)
+				{
+					//single handed weapons for the weapon slot
+					if(weapon_hands(best[sl]) > 1)
+					{
+						//the currently desired best weapon is 2 handed weapon. so we sum it value with best off-hand found thus far
+						if(rollover_value(it) + rollover_value(best[$slot[off-hand]]) > rollover_value(best[sl]))
+						{
+							best[sl] = it;
+						}
+					}
+					else if(rollover_value(it) > rollover_value(best[sl]))
+					{
+						//the currently desired best weapon is 1 handed. So we just compare it to best weapon.
+						best[sl] = it;
+						best1hweapon = best[$slot[weapon]];
+					}
+					else if(rollover_value(it) > rollover_value(best1hweapon))
+					{
+						//keep best1hweapon updated even if not best weapon
+						best1hweapon = best[$slot[weapon]];
+					}
+					
+					//single handed weapons for the off-hand slot
+					boolean weapon_offhand = have_skill($skill[Double-Fisted Skull Smashing]);
+					boolean conflict_mainhand = boolean_modifier(it, "Single Equip") && best[sl] == it;
+					boolean conflict_quantity = best[sl] == it && !canPull(it,true) && item_amount(it) + equipped_amount(it) < 2;
+					if(weapon_offhand && !conflict_mainhand && !conflict_quantity)
+					{
+						if(rollover_value(it) > rollover_value(best[$slot[off-hand]]))
+						{
+							best[$slot[off-hand]] = it;
+						}
+					}
+				}
+				else abort("[" +it+ "] listed as having " +weapon_hands(it)+ " hands while being a weapon");
+			}
+			else if(rollover_value(it) > rollover_value(best[sl]))
+			{
+				//for non conflicting slots. calculate normally.
+				//off-hand might conflict but are resolved at the weapon slot in a way that still requires us to find the best offhand
+				best[sl] = it;
+				
+				//best off-hand slot can make best remembered 1h weapon better than current best 2h weapon
+				if($slot[off-hand] == sl && weapon_hands(best[$slot[weapon]]) > 1)
+				{
+					if(rollover_value(it) + rollover_value(best1hweapon) > rollover_value(best[$slot[weapon]]))
+					{
+						best[$slot[weapon]] = best1hweapon;
+					}
+				}
+			}
+		}
+		
+		//time halo is special. cannot have any weapons or off-hand items equipped
+		if(rollover_value($item[time halo]) > rollover_value(best[worst_acc_slot]) + rollover_value(best[$slot[weapon]]) + rollover_value(best[$slot[off-hand]]))
+		{	
+			if((possessEquipment($item[time halo]) || canPull($item[time halo],true)) && auto_can_equip($item[time halo]))
+			{
+				best[worst_acc_slot] = $item[time halo];
+				//clearing weapon and off-hand here at least avoids pulling them after a time halo in the same rollover.
+				//should technically decide based on improvement value instead, but if the best of 3 slots together are beaten by 5 their improvement value would be low
+				best[$slot[weapon]] = $item[none];
+				best[$slot[off-hand]] = $item[none];
+			}
+		}
+		
+		//find the very best item
+		boolean extra_debug = get_property("_auto_extra_debug_bedtime_pulls").to_boolean();
+		foreach sl in $slots[hat, weapon, off-hand, back, shirt, pants, acc1, familiar]
+		{
+			if(sl == $slot[acc1])
+			{
+				sl = worst_acc_slot;
+			}
+			
+			if(extra_debug)
+			{
+				//prints out all the items we want. Too messy for normal runs even in debug mode.
+				auto_log_debug("[" +sl+ "] wanted [" +best[sl]+ "] val = " +rollover_value(best[sl])+ ". currently [" +equipped_item(sl)+ "] val = " +rollover_value(equipped_item(sl))+ ". improvement = " +rollover_improvement(best[sl], sl));
+			}
+			
+			//if we already pulled the best item for a slot but maximizer failed to equip our best item into it for some reason then we want to exclude that slot from further attempts.
+			boolean maximizer_fail = possessEquipment(best[sl]) && equipped_item(sl) != best[sl];
+			if(maximizer_fail)
+			{
+				auto_log_debug("Bedtime pulls: maximizer is not equipping [" +best[sl]+ "] into [" +sl+ "] for some reason. Skipping this slot");
+			}
+			else if(rollover_improvement(best[sl], sl) > very_best_val)
+			{
+				very_best = best[sl];
+				very_best_val = rollover_improvement(best[sl], sl);
+				very_best_slot = sl;
+			}
+		}
+
+		very_best_improvement = rollover_improvement(very_best, very_best_slot);
+		if(very_best_improvement < desirability)
+		{
+			break;
+		}
+		auto_log_info("Pulling [" +very_best+ "] which improves desireability score by " +very_best_improvement);
+		if(extra_debug) break;
+		pullXWhenHaveY(very_best, 1, 0);
+		equipRollover(true);
+	}
+}
+
+void bedtime_pulls_rollover_equip()
+{
+	bedtime_pulls_rollover_equip(get_property("auto_bedtime_pulls_min_desirability").to_float());
+}
+
 void bedtime_pulls()
 {
 	if(pulls_remaining() < 1)		//out of pulls or in hardcore or in casual.
@@ -234,7 +536,23 @@ void bedtime_pulls()
 		return;
 	}
 	
-	if(item_amount($item[Muculent Machete]) == 0 && my_class() != $class[Avatar of Boris])
+	if(my_daycount() == 1 && my_level() <= 8)
+	{
+		//this run looks like it will take a couple more days, give priority to good rollover equipment before other pulls
+		float desirability = max(5.0, get_property("auto_bedtime_pulls_min_desirability").to_float());
+		bedtime_pulls_rollover_equip(desirability);
+	}
+	
+	if(get_property("auto_bedtime_pulls_min_desirability").to_float() <= 5.0 && !in_lol())
+	{
+		if(storage_amount($item[potato alarm clock]) > 0)
+		{
+			pullXWhenHaveY($item[potato alarm clock], 1, 0);
+		}
+	}
+
+	if(item_amount($item[Muculent Machete]) == 0 && 
+		!(is_boris() || in_wotsf() || in_pokefam() || in_lol())) // no need in paths where can't use machete
 	{
 		pullXWhenHaveY($item[Antique Machete], 1, 0);
 	}
@@ -242,14 +560,14 @@ void bedtime_pulls()
 	{
 		pullXWhenHaveY($item[wet stew], 1, 0);
 	}
-	if(!black_market_available())
+	if(!black_market_available() && !in_lol())
 	{
 		pullXWhenHaveY($item[blackberry galoshes], 1, 0);
 	}
 	if(internalQuestStatus("questL11Desert") < 1)
 	{
 		int gnasirProgress = get_property("gnasirProgress").to_int();
-		if ((gnasirProgress & 16) == 0)
+		if ((gnasirProgress & 16) == 0 && auto_is_valid($item[drum machine]))
 		{
 			pullXWhenHaveY($item[drum machine], 1, 0);
 		}
@@ -260,115 +578,12 @@ void bedtime_pulls()
 	}
 	
 	//scan through all pullable items for items that have a better rollover adv gain than currently best equipped item.
-	float rollover_value(item it)
+	bedtime_pulls_rollover_equip();
+
+	//pull 11-leaf clover if we can use it
+	if(auto_is_valid($item[11-Leaf Clover]))
 	{
-		float retval = numeric_modifier(it, "adventures");
-		if(hippy_stone_broken())
-		{
-			retval += get_property("auto_bedtime_pulls_pvp_multi").to_float() * numeric_modifier(it, "PvP Fights");
-		}
-		return retval;
-	}
-	float rollover_improvement(item it, slot sl)
-	{
-		//need slot to not give bad results when slot is none
-		return rollover_value(it) - rollover_value(equipped_item(sl));
-	}
-	
-	equipRollover(true);
-	for(int i=0; i<20; i++)
-	{
-		if(pulls_remaining() == 0)
-		{
-			break;	//we are out of pulls
-		}
-		
-		item[slot] best;
-		item very_best;
-		float very_best_val;
-		float very_best_improvement;
-		
-		//populate best with current equipment as a baseline
-		foreach sl in $slots[]
-		{
-			best[sl] = equipped_item(sl);
-		}
-		
-		//find the best item for each slot
-		foreach it in $items[]
-		{
-			slot sl = it.to_slot();
-			if($slots[acc1, acc2, acc3, weapon, off-hand] contains sl) continue;		//exclude conflicting slots. TODO handle conflicts
-			if(!($slots[hat, weapon, off-hand, back, shirt, pants, acc1, acc2, acc3, familiar] contains sl)) continue;	//exotic slot or not equip
-			if(!possessEquipment(it) && !canPull(it,true)) continue;		//do not have it and can not pull it.
-			if(!auto_can_equip(it)) continue;		//we can not equip it
-			
-			if($slots[acc1, acc2, acc3] contains sl)
-			{
-				//since we are pulling one item at a time, it does not matter if all 3 slots want us to pull the same item.
-			}
-			if(rollover_value(it) > rollover_value(best[sl]))
-			{
-				best[sl] = it;
-			}
-		}
-		
-		//find the very best item
-		foreach sl in $slots[hat, weapon, off-hand, back, shirt, pants, acc1, acc2, acc3, familiar]
-		{
-			if(get_property("_auto_extra_debug_bedtime_pulls").to_boolean())
-			{
-				//prints out all the items we want. Too messy for normal runs even in debug mode.
-				auto_log_debug("[" +sl+ "] wanted [" +best[sl]+ "] val = " +rollover_value(best[sl])+ ". currently [" +equipped_item(sl)+ "] val = " +rollover_value(equipped_item(sl))+ ". improvement = " +rollover_improvement(best[sl], sl));
-			}
-			
-			//if we already pulled the best item for a slot but maximizer failed to equip our best item into it for some reason then we want to exclude that slot from further attempts.
-			boolean maximizer_fail = possessEquipment(best[sl]) && equipped_amount(best[sl]) == 0;
-			if(rollover_improvement(best[sl], sl) > very_best_val && !maximizer_fail)
-			{
-				very_best = best[sl];
-				very_best_val = rollover_improvement(best[sl], sl);
-			}
-		}
-		
-		very_best_improvement = rollover_improvement(very_best, very_best.to_slot());
-		if(very_best_improvement < get_property("auto_bedtime_pulls_min_desirability").to_float())
-		{
-			break;
-		}
-		auto_log_info("Pulling [" +very_best+ "] which improves desireability score by " +very_best_improvement);
-		pullXWhenHaveY(very_best, 1, 0);
-		equipRollover(true);
-	}
-	
-	//grab clovers with remaining pulls
-	void batch_pull(item it)		//pull from storage without buying any extras
-	{
-		int amt = min(storage_amount(it), pulls_remaining());
-		if(amt > 0)
-		{
-			pullXWhenHaveY(it, amt, item_amount(it));
-		}
-	}
-	if(!get_property("auto_bedtime_pulls_skip_clover").to_boolean() && pulls_remaining() > 0)
-	{
-		boolean pieces_forbidden = in_glover() || in_bhy();
-		if(!pieces_forbidden)
-		{
-			batch_pull($item[Disassembled Clover]);
-		}
-		batch_pull($item[Ten-Leaf Clover]);
-		
-		//buy and pull clovers if we still need any
-		item cheaper = $item[Disassembled Clover];
-		if(pieces_forbidden || mall_price($item[Disassembled Clover]) > mall_price($item[Ten-Leaf Clover]))
-		{
-			cheaper = $item[Ten-Leaf Clover];
-		}
-		if(pulls_remaining() > 0)
-		{
-			pullXWhenHaveY(cheaper, pulls_remaining() + item_amount(cheaper), item_amount(cheaper));
-		}
+		pullXWhenHaveY($item[11-Leaf Clover], 1, item_amount($item[11-Leaf Clover]));
 	}
 }
 
@@ -383,45 +598,55 @@ boolean doBedtime()
 
 	auto_process_kmail("auto_deleteMail");
 
-	if(my_adventures() > 4)
+	// If rollover isn't approaching, check for reasons to stop bedtime
+	boolean out_of_blood = false;
+	if(! almostRollover())
 	{
-		if(my_inebriety() <= inebriety_limit())
+		if(my_adventures() > 4)
 		{
-			if(!in_gnoob() && my_familiar() != $familiar[Stooper])
+			if(my_inebriety() <= inebriety_limit())
 			{
-				return false;
+				if(!in_gnoob() && my_familiar() != $familiar[Stooper])
+				{
+					auto_log_warning("Still adventurous! Stopping bedtime.", "red");
+					return false;
+				}
 			}
 		}
+		out_of_blood = (in_darkGyffte() && item_amount($item[blood bag]) == 0);
+		if((fullness_left() > 0) && can_eat() && !out_of_blood)
+		{
+			auto_log_warning("Still hungry! Stopping bedtime.", "red");
+			return false;
+		}
+		if((inebriety_left() > 0) && can_drink() && !out_of_blood)
+		{
+			auto_log_warning("Still sober! Stopping bedtime.", "red");
+			return false;
+		}
+		int spleenlimit = spleen_limit();
+		if(!canChangeFamiliar())
+		{
+			spleenlimit -= 3;
+		}
+		if(!haveSpleenFamiliar())
+		{
+			spleenlimit = 0;
+		}
+		if((my_spleen_use() < spleenlimit) && !in_hardcore() && (inebriety_left() > 0))
+		{
+			auto_log_warning("Still spleeny! Stopping bedtime.", "red");
+			return false;
+		}
 	}
-	boolean out_of_blood = (my_class() == $class[Vampyre] && item_amount($item[blood bag]) == 0);
-	if((fullness_left() > 0) && can_eat() && !out_of_blood)
-	{
-		return false;
-	}
-	if((inebriety_left() > 0) && can_drink() && !out_of_blood)
-	{
-		return false;
-	}
-	int spleenlimit = spleen_limit();
-	if(!canChangeFamiliar())
-	{
-		spleenlimit -= 3;
-	}
-	if(!haveSpleenFamiliar())
-	{
-		spleenlimit = 0;
-	}
-	if((my_spleen_use() < spleenlimit) && !in_hardcore() && (inebriety_left() > 0))
-	{
-		return false;
-	}
-
+	
 	ed_terminateSession();
 	bat_terminateSession();
 
 	while(LX_freeCombats());
 
-	if((my_class() == $class[Seal Clubber]) && guild_store_available())
+	// although seals can be fought drunk, it complicates code without a meaningful benefit
+	if (my_class() == $class[Seal Clubber] && guild_store_available() && my_inebriety() <= inebriety_limit() && !in_avantGuard())
 	{
 		handleFamiliar("stat");
 		int oldSeals = get_property("_sealsSummoned").to_int();
@@ -431,31 +656,31 @@ boolean doBedtime()
 			if((my_daycount() == 1) && (my_level() >= 6) && isHermitAvailable())
 			{
 				cli_execute("make figurine of an ancient seal");
-				buyUpTo(3, $item[seal-blubber candle]);
+				auto_buyUpTo(3, $item[seal-blubber candle]);
 				ensureSealClubs();
 				handleSealAncient();
 				summoned = true;
 			}
 			else if(my_level() >= 9)
 			{
-				buyUpTo(1, $item[figurine of an armored seal]);
-				buyUpTo(10, $item[seal-blubber candle]);
+				auto_buyUpTo(1, $item[figurine of an armored seal]);
+				auto_buyUpTo(10, $item[seal-blubber candle]);
 				ensureSealClubs();
 				handleSealNormal($item[Figurine of an Armored Seal]);
 				summoned = true;
 			}
 			else if(my_level() >= 5)
 			{
-				buyUpTo(1, $item[figurine of a Cute Baby Seal]);
-				buyUpTo(5, $item[seal-blubber candle]);
+				auto_buyUpTo(1, $item[figurine of a Cute Baby Seal]);
+				auto_buyUpTo(5, $item[seal-blubber candle]);
 				ensureSealClubs();
 				handleSealNormal($item[Figurine of a Cute Baby Seal]);
 				summoned = true;
 			}
 			else
 			{
-				buyUpTo(1, $item[figurine of a Wretched-Looking Seal]);
-				buyUpTo(1, $item[seal-blubber candle]);
+				auto_buyUpTo(1, $item[figurine of a Wretched-Looking Seal]);
+				auto_buyUpTo(1, $item[seal-blubber candle]);
 				ensureSealClubs();
 				handleSealNormal($item[Figurine of a Wretched-Looking Seal]);
 				summoned = true;
@@ -493,12 +718,20 @@ boolean doBedtime()
 			{
 				auto_log_info("Pulls remaining: " + pulls_remaining(), "olive");
 			}
-			if(item_amount($item[beer helmet]) == 0)
+			if(!possessOutfit("frat warrior fatigues") && !get_property("auto_hippyInstead").to_boolean())
 			{
 				auto_log_info("Please consider an orcish frat boy spy (You want Frat Warrior Fatigues).", "blue");
 				if(canYellowRay())
 				{
 					auto_log_info("Make sure to Ball Lightning the spy!!", "red");
+				}
+			}
+			else if(!possessOutfit("War Hippy Fatigues") && get_property("auto_hippyInstead").to_boolean())
+			{
+				auto_log_info("Please consider a Bailey's Beetle (You want War Hippy Fatigues).", "blue");
+				if(canYellowRay())
+				{
+					auto_log_info("Make sure to Ball Lightning the hippy!!", "red");
 				}
 			}
 			else
@@ -516,32 +749,47 @@ boolean doBedtime()
 
 	//We are committing to end of day now...
 	getSpaceJelly();
-	while(acquireHermitItem($item[Ten-leaf Clover]));
+	while(acquireHermitItem($item[11-leaf Clover]));
 
 	januaryToteAcquire($item[Makeshift Garbage Shirt]);		//doubles stat gains in the LOV tunnel. also keep leftover charges for tomorrow.
 	loveTunnelAcquire(true, $stat[none], true, 3, true, 1);
 
-	if(item_amount($item[Genie Bottle]) > 0)
+	item bottle = wrap_item($item[Genie Bottle]);
+	if(item_amount(bottle) > 0 && auto_is_valid(bottle))
 	{
+	//we are in bedtime so any wishes we planned to use today were already used. thus even if we can not use pocket wishes in this path we should still make them to avoid waste
 		for(int i=get_property("_genieWishesUsed").to_int(); i<3; i++)
 		{
 			makeGeniePocket();
 		}
 	}
-	if(canGenieCombat() && item_amount($item[beer helmet]) == 0)
+	if(canGenieCombat($monster[Orcish Frat Boy Spy]) && !possessOutfit("frat warrior fatigues"))
 	{
 		auto_log_info("Please consider genie wishing for an orcish frat boy spy (You want Frat Warrior Fatigues).", "blue");
+	}
+	
+	if(item_amount($item[Infinite BACON Machine]) > 0 && !get_property("_internetViralVideoBought").to_boolean() && !can_interact())
+	{
+		boolean hasDisintegrate = auto_have_skill($skill[Disintegrate]) && my_maxmp() >= 1.5*mp_cost($skill[Disintegrate]);  //will be limited by current mp, try to gauge if it will be available
+		boolean notNeeded = have_effect($effect[Everything Looks Yellow]) > 0 || hasDisintegrate || canYellowRay(); //have a common unlimited source of YR, no need to make viral video
+		boolean baconUnused = item_amount($item[BACON]) >= (100*my_daycount() - 20*(my_daycount() - 1));  //BACON hasn't been used for something else this ascension
+		if(auto_is_valid($item[Viral Video]) && !notNeeded && baconUnused &&
+		!in_koe() && !is_werewolf())	//bacon store is unreachable in kingdom of exploathing or as werewolf
+		{
+			//can only buy 1 per day and more than one a day might be wanted later so buy today's viral video
+			create(1, $item[Viral Video]);
+		}
 	}
 
 	if((friars_available()) && (!get_property("friarsBlessingReceived").to_boolean()))
 	{
-		if(in_pokefam() || my_class() == $class[Vampyre])
+		if(pathHasFamiliar())
 		{
-			cli_execute("friars food");
+			cli_execute("friars familiar");
 		}
 		else
 		{
-			cli_execute("friars familiar");
+			cli_execute("friars food");
 		}
 	}
 
@@ -567,7 +815,7 @@ boolean doBedtime()
 		string temp = visit_url("shop.php?action=bacta&whichshop=mayoclinic");
 	}
 
-	if((auto_my_path() == "Nuclear Autumn") && (get_property("falloutShelterLevel").to_int() >= 3) && !get_property("_falloutShelterSpaUsed").to_boolean())
+	if(in_nuclear() && (get_property("falloutShelterLevel").to_int() >= 3) && !get_property("_falloutShelterSpaUsed").to_boolean())
 	{
 		string temp = visit_url("place.php?whichplace=falloutshelter&action=vault3");
 	}
@@ -591,7 +839,11 @@ boolean doBedtime()
 	{
 		visit_url("clan_viplounge.php?preaction=poolgame&stance=1");
 		visit_url("clan_viplounge.php?preaction=poolgame&stance=1");
-		visit_url("clan_viplounge.php?preaction=poolgame&stance=3");
+		if(auto_is_valid($effect[Hustlin\']))
+		{
+			visit_url("clan_viplounge.php?preaction=poolgame&stance=3");
+		}
+		visit_url("clan_viplounge.php?preaction=poolgame&stance=1");		
 	}
 	if(is_unrestricted($item[Colorful Plastic Ball]) && !get_property("_ballpit").to_boolean() && (get_clan_id() != -1))
 	{
@@ -599,7 +851,7 @@ boolean doBedtime()
 	}
 	if (get_property("telescopeUpgrades").to_int() > 0 && internalQuestStatus("questL13Final") < 0)
 	{
-		if(get_property("telescopeLookedHigh") == "false")
+		if(get_property("telescopeLookedHigh") == "false" && auto_is_valid($effect[Starry-Eyed]))
 		{
 			cli_execute("telescope high");
 		}
@@ -609,7 +861,7 @@ boolean doBedtime()
 	{
 		if((item_amount($item[frilly skirt]) < 1) && knoll_available())
 		{
-			buyUpTo(1, $item[frilly skirt]);
+			auto_buyUpTo(1, $item[frilly skirt]);
 		}
 		if(item_amount($item[frilly skirt]) > 0)
 		{
@@ -617,30 +869,38 @@ boolean doBedtime()
 		}
 	}
 
-	if((my_daycount() == 1) && (possessEquipment($item[Thor\'s Pliers]) || (freeCrafts() > 0)) && !possessEquipment($item[Chrome Sword]) && !inAftercore() && !in_tcrs())
+	if((my_daycount() == 1) && (possessEquipment($item[Thor\'s Pliers]) || (freeCrafts() > 0)) && !possessEquipment($item[Chrome Sword]) && auto_is_valid($item[chrome sword]) && !inAftercore() && !in_tcrs())
 	{
 		item oreGoal = to_item(get_property("trapperOre"));
 		int need = 1;
+		boolean haveAdvSmithing = have_skill($skill[Super-Advanced Meatsmithing]);
 		if(oreGoal == $item[Chrome Ore])
 		{
 			need = 4;
 		}
-		if((item_amount($item[Chrome Ore]) >= need) && !possessEquipment($item[Chrome Sword]) && isArmoryAvailable())
+		if (!haveAdvSmithing)
+		{
+			auto_log_info('No Super-Advanced Meatsmithing for chrome sword crafting!');
+		}
+		if((item_amount($item[Chrome Ore]) >= need) && !possessEquipment($item[Chrome Sword]) && isArmoryAvailable() && haveAdvSmithing)
 		{
 			cli_execute("make " + $item[Chrome Sword]);
 		}
+		else
+		{
+			auto_log_info('Did not make chrome sword');
+		}
 	}
 
-	equipRollover(false);
-	heavy_rains_doBedtime();
+	heavyrains_doBedtime();
 
-	while(my_daycount() == 1 && item_amount($item[resolution: be more adventurous]) > 0 && get_property("_resolutionAdv").to_int() < 10 && !can_interact())
+	while(my_daycount() == 1 && auto_is_valid($item[resolution: be more adventurous]) && item_amount($item[resolution: be more adventurous]) > 0 && get_property("_resolutionAdv").to_int() < 10 && !can_interact())
 	{
 		use(1, $item[resolution: be more adventurous]);
 	}
 
 	// If in TCRS skip using freecrafts but alert user of how many they can manually use.
-	if((in_tcrs()) && (freeCrafts() > 0))
+	if(in_tcrs() && (freeCrafts() > 0))
 	{
 		auto_log_warning("In TCRS: Items are variable, skipping End Of Day crafting", "red");
 		auto_log_warning("Consider manually using your "+freeCrafts()+" free crafts", "red");
@@ -669,44 +929,51 @@ boolean doBedtime()
 	dailyEvents();
 	if((get_property("auto_clanstuff").to_int() < my_daycount()) && (get_clan_id() != -1))
 	{
-		if(is_unrestricted($item[Olympic-sized Clan Crate]) && !get_property("_olympicSwimmingPool").to_boolean())
-		{
-			cli_execute("swim noncombat");
-		}
-		if(is_unrestricted($item[Olympic-sized Clan Crate]) && !get_property("_olympicSwimmingPoolItemFound").to_boolean())
-		{
-			cli_execute("swim item");
-		}
 		if(get_property("_klawSummons").to_int() == 0 && get_clan_rumpus() contains 'Mr. Klaw "Skill" Crane Game')
 		{
 			cli_execute("clan_rumpus.php?action=click&spot=3&furni=3");
 			cli_execute("clan_rumpus.php?action=click&spot=3&furni=3");
 			cli_execute("clan_rumpus.php?action=click&spot=3&furni=3");
 		}
-		if(is_unrestricted($item[Clan Looking Glass]) && !get_property("_lookingGlass").to_boolean())
+		if(item_amount($item[Clan VIP Lounge Key]) > 0)
 		{
-			string temp = visit_url("clan_viplounge.php?action=lookingglass");
-		}
-		if(get_property("_deluxeKlawSummons").to_int() == 0)
-		{
-			cli_execute("clan_viplounge.php?action=klaw");
-			cli_execute("clan_viplounge.php?action=klaw");
-			cli_execute("clan_viplounge.php?action=klaw");
-		}
-		if(!get_property("_aprilShower").to_boolean())
-		{
-			if(inAftercore())
+			if(is_unrestricted($item[Olympic-sized Clan Crate]) && !get_property("_olympicSwimmingPool").to_boolean())
 			{
-				cli_execute("shower ice");
+				cli_execute("swim noncombat");
 			}
-			else
+			if(is_unrestricted($item[Olympic-sized Clan Crate]) && !get_property("_olympicSwimmingPoolItemFound").to_boolean())
 			{
-				cli_execute("shower " + my_primestat());
+				cli_execute("swim item");
 			}
-		}
-		if(is_unrestricted($item[Crimbough]) && !get_property("_crimboTree").to_boolean())
-		{
-			cli_execute("crimbotree get");
+			if(is_unrestricted($item[Clan Looking Glass]) && !get_property("_lookingGlass").to_boolean())
+			{
+				string temp = visit_url("clan_viplounge.php?action=lookingglass");
+			}
+			if(get_property("_deluxeKlawSummons").to_int() == 0)
+			{
+				cli_execute("clan_viplounge.php?action=klaw");
+				cli_execute("clan_viplounge.php?action=klaw");
+				cli_execute("clan_viplounge.php?action=klaw");
+			}
+			if(!get_property("_aprilShower").to_boolean())
+			{
+				if(inAftercore())
+				{
+					cli_execute("shower ice");
+				}
+				else if(in_glover())
+				{
+					cli_execute("shower mp"); // can't use the effects or the ice
+				}
+				else
+				{
+					cli_execute("shower " + my_primestat());
+				}
+			}
+			if(is_unrestricted($item[Crimbough]) && !get_property("_crimboTree").to_boolean())
+			{
+				cli_execute("crimbotree get");
+			}
 		}
 		set_property("auto_clanstuff", ""+my_daycount());
 	}
@@ -769,16 +1036,34 @@ boolean doBedtime()
 		int enhances = auto_sourceTerminalEnhanceLeft();
 		while(enhances > 0)
 		{
-			auto_sourceTerminalEnhance("items");
-			auto_sourceTerminalEnhance("meat");
-			enhances -= 2;
+			if(in_glover())
+			{
+				auto_sourceTerminalEnhance("damage");
+				enhances -= 1;
+		}
+			else
+			{
+				auto_sourceTerminalEnhance("items");
+				auto_sourceTerminalEnhance("meat");
+				enhances -= 2;
+			}
 		}
 	}
 
 	// Is +50% to all stats the best choice here? I don't know!
-	spacegateVaccine($effect[Broad-Spectrum Vaccine]);
+	if(auto_is_valid($effect[Broad-Spectrum Vaccine]))
+	{
+		spacegateVaccine($effect[Broad-Spectrum Vaccine]);
+	}
 
-	zataraSeaside("item");
+	if(!auto_is_valid($effect[There\'s No N In Love]))
+	{
+		zataraSeaside("familiar");
+	}
+	else
+	{
+		zataraSeaside("item");
+	}
 
 	if(is_unrestricted($item[Source Terminal]) && (get_campground() contains $item[Source Terminal]))
 	{
@@ -798,7 +1083,7 @@ boolean doBedtime()
 			}
 			int amt = count(extrudeChoice);
 			string acquire = "booze";
-			if(auto_my_path() == "Teetotaler")
+			if(my_path() == $path[Teetotaler])
 			{
 				acquire = "food";
 			}
@@ -853,7 +1138,6 @@ boolean doBedtime()
 	}
 	if(get_property("timesRested").to_int() < total_free_rests())
 	{
-		cs_spendRests();
 		auto_log_info("You have " + (total_free_rests() - get_property("timesRested").to_int()) + " free rests remaining.", "blue");
 	}
 	if(possessEquipment($item[Kremlin\'s Greatest Briefcase]) && (get_property("_kgbClicksUsed").to_int() < 24))
@@ -909,7 +1193,7 @@ boolean doBedtime()
 		use(1, $item[School of Hard Knocks Diploma]);
 	}
 
-	if(!get_property("_lyleFavored").to_boolean())
+	if(!get_property("_lyleFavored").to_boolean() && auto_is_valid($effect[Favored by Lyle]))
 	{
 		string temp = visit_url("place.php?whichplace=monorail&action=monorail_lyle");
 	}
@@ -928,19 +1212,80 @@ boolean doBedtime()
 	elementalPlanes_takeJob($element[stench]);
 	elementalPlanes_takeJob($element[cold]);
 
-	if((get_property("auto_dickstab").to_boolean()) && chateaumantegna_available() && (my_daycount() == 1))
+	auto_beachUseFreeCombs();
+	auto_drinkNightcap();
+	equipRollover(false);
+	
+	// Use up any cursed monkey paw wishes on Frosty (+100% item, +100% meat, +25 ML)
+	// Unless we're limiting ML, then do One Very Clear Eye
+	effect effect_to_wish = $effect[Frosty];
+	if (get_property("auto_MLSafetyLimit")!="" || in_wereprof())  // Professor hates ML
 	{
-		boolean[item] furniture = chateaumantegna_decorations();
-		if(!furniture[$item[Artificial Skylight]])
+		if (get_property("auto_MLSafetyLimit").to_int() < 25 || in_wereprof()) // We're adding +25 ML that won't be shrugged. Professor hates ML
 		{
-			chateaumantegna_buyStuff($item[Artificial Skylight]);
+			effect_to_wish = $effect[One Very Clear Eye];
+		}
+	}
+	if (auto_haveMonkeyPaw() && auto_monkeyPawWishesLeft() > 0)
+	{
+		boolean success = true;
+		// if we unlocked the guild and have a meatcar, unlock Whitey's Grove so we can get bird rib / lion oil
+		if (get_property("lastGuildStoreOpen").to_int() == my_ascensions() && item_amount($item[bitchin' meatcar]) > 0) {
+			// start, then finish the meatcar quest
+			if (internalQuestStatus("questG01Meatcar") < 1) {
+				visit_url("guild.php?place=paco");
+			}
+			if (internalQuestStatus("questG01Meatcar") < 1) {
+				visit_url("guild.php?place=paco");
+			}
+			// open Whitey's Grove
+			if (internalQuestStatus("questG02Whitecastle") < 0) {
+				visit_url("guild.php?place=paco");
+				run_choice(1);
+			}
+			foreach it in $items[Lion Oil, Bird Rib]
+			{
+				if(item_amount(it) > 0) continue;
+				auto_makeMonkeyPawWish(it);
+			}
+		}
+		while (auto_monkeyPawWishesLeft() > 0 && success)
+		{
+			success = auto_makeMonkeyPawWish(effect_to_wish);
+		}
+		if (!success)
+		{
+			print("Something went wrong using up monkey paw wishes.", "red");
 		}
 	}
 
-	auto_beachUseFreeCombs();
-	auto_drinkNightcap();
+	if(in_plumber() && fullness_left() > 0)
+	{
+		print("Plumber consumption is complicated. Please manually consume stuff then run me again.", "red");
+		return false;
+	}
 
-	boolean done = (my_inebriety() > inebriety_limit()) || (my_inebriety() == inebriety_limit() && my_familiar() == $familiar[Stooper]);
+	//There is a bug where Ed servant's can't be switched due to an issue in KoL itself
+	//Per Discord, work around is to never log out with a level 7 or greater Scribe
+	//Priest is always unlocked prior to Scribe. Just always attempt to switch to Priest at bedtime
+	handleServant($servant[Priest]);
+
+	boolean canChangeToStooper()
+	{
+		if (in_small() || in_wereprof()) // In smol and wereprofessor, the stooper can be equipped, but does not modify the liver size
+		{
+			return false;
+		}
+		if(have_familiar($familiar[Stooper]) &&	//do not use auto_ that returns false in 100run, which stooper drinking does not interrupt.
+		pathAllowsChangingFamiliar() &&		//some paths forbid familiar or dont allow changing it but mafia still indicates you have the familiar
+		my_familiar() != $familiar[Stooper])
+		{
+			return true;
+		}
+		return false;
+	}
+
+	boolean done = (my_inebriety() > inebriety_limit() && !canChangeToStooper()) || (my_inebriety() > (inebriety_limit() + 1));
 	if(in_gnoob() || !can_drink() || out_of_blood)
 	{
 		if((my_adventures() <= 2) || (internalQuestStatus("questL13Final") >= 14))
@@ -948,13 +1293,17 @@ boolean doBedtime()
 			done = true;
 		}
 	}
+	if(in_robot())
+	{
+		//robots eat energy not food nor booze.
+		boolean chronolith_done = my_robot_energy() < robot_chronolith_cost() || robot_chronolith_cost() > 47;
+		done = chronolith_done && !auto_unreservedAdvRemaining();
+	}
 	if(!done)
 	{
 		auto_log_info("Goodnight done, please make sure to handle your overdrinking, then you can run me again.", "blue");
-		if(have_familiar($familiar[Stooper]) &&	//do not use auto_ that returns false in 100run, which stooper drinking does not interrupt.
-		pathAllowsChangingFamiliar() &&		//some paths forbid familiar or dont allow changing it but mafia still indicates you have the familiar
-		inebriety_left() == 0 &&	//stooper drinking is only useful when liver is exactly at max without a stooper equipped.
-		my_familiar() != $familiar[Stooper])
+		if(canChangeToStooper() &&
+		inebriety_left() == 0)	//stooper drinking is only useful when liver is exactly at max without a stooper equipped.
 		{
 			auto_log_info("You have a Stooper, you can increase liver by 1!", "blue");
 			use_familiar($familiar[Stooper]);
@@ -973,7 +1322,7 @@ boolean doBedtime()
 		if(have_skill($skill[The Ode to Booze]))
 		{
 			shrugAT($effect[Ode to Booze]);
-			buffMaintain($effect[Ode to Booze], 0, 1, 1);
+			buffMaintain($effect[Ode to Booze]);
 		}
 		return false;
 	}
@@ -991,38 +1340,53 @@ boolean doBedtime()
 			{
 				auto_log_info(yellowRay_str);
 			}
-			if(!get_property("_photocopyUsed").to_boolean() && (is_unrestricted($item[Deluxe Fax Machine])) && (my_adventures() > 0) && !($classes[Avatar of Boris, Avatar of Jarlsberg, Avatar of Sneaky Pete] contains my_class()) && (item_amount($item[Clan VIP Lounge Key]) > 0))
+			if(!get_property("_photocopyUsed").to_boolean() && (is_unrestricted($item[Deluxe Fax Machine])) && (my_adventures() > 0) && !(is_boris() || is_jarlsberg() || is_pete()) && (item_amount($item[Clan VIP Lounge Key]) > 0))
 			{
 				auto_log_info("You may have a fax that you can use. Check it out!", "blue");
 			}
 		}
 		
+		bedtime_still();	//quickly use up all remaining uses of Nash Crosby's Still during bedtime
+
+		if(get_workshed() == $item[spinning wheel] && is_unrestricted($item[spinning wheel]) && !get_property("_spinningWheel").to_boolean())
+		{
+			auto_log_info("Using the spinning wheel in your workshed", "blue");
+			visit_url("campground.php?action=spinningwheel");
+		}
+
+		bedtime_spleen();
+		// spleen use may have equipped +stat gain items
+		equipRollover(true);
+
 		bedtime_pulls();
 		pullsNeeded("evaluate");
 
-		if(have_skill($skill[Calculate the Universe]) && (get_property("_universeCalculated").to_int() < get_property("skillLevel144").to_int()))
+		acquireMilkOfMagnesiumIfUnused(true);
+		consumeMilkOfMagnesiumIfUnused();
+		auto_scepterRollover();
+
+		if(have_skill($skill[Calculate the Universe]) && auto_is_valid($skill[Calculate the Universe]) && (get_property("_universeCalculated").to_int() < min(3, get_property("skillLevel144").to_int())))
 		{
 			auto_log_info("You can still Calculate the Universe!", "blue");
 		}
-
-		if(is_unrestricted($item[Deck of Every Card]) && (item_amount($item[Deck of Every Card]) > 0) && (get_property("_deckCardsDrawn").to_int() < 15))
+		
+		item deck = wrap_item($item[Deck of Every Card]);
+		if(is_unrestricted(deck) && (item_amount(deck) > 0) && (get_property("_deckCardsDrawn").to_int() < 15) && auto_is_valid(deck))
 		{
 			auto_log_info("You have a Deck of Every Card and " + (15 - get_property("_deckCardsDrawn").to_int()) + " draws remaining!", "blue");
 		}
 
-		if(is_unrestricted($item[Time-Spinner]) && (item_amount($item[Time-Spinner]) > 0) && (get_property("_timeSpinnerMinutesUsed").to_int() < 10) && glover_usable($item[Time-Spinner]))
+		if(is_unrestricted($item[Time-Spinner]) && (item_amount($item[Time-Spinner]) > 0) && (get_property("_timeSpinnerMinutesUsed").to_int() < 10) && auto_is_valid($item[Time-Spinner]))
 		{
 			auto_log_info("You have " + (10 - get_property("_timeSpinnerMinutesUsed").to_int()) + " minutes left to Time-Spinner!", "blue");
 		}
 
-		if(is_unrestricted($item[Chateau Mantegna Room Key]) && !get_property("_chateauMonsterFought").to_boolean() && get_property("chateauAvailable").to_boolean())
+		if(is_unrestricted(wrap_item($item[Chateau Mantegna Room Key])) && !get_property("_chateauMonsterFought").to_boolean() && get_property("chateauAvailable").to_boolean())
 		{
 			auto_log_info("You can still fight a Chateau Mangtegna Painting today.", "blue");
 		}
 
-		bedtime_still();	//quickly use up all remaining uses of Nash Crosby's Still during bedtime
-
-		if(!get_property("_streamsCrossed").to_boolean() && possessEquipment($item[Protonic Accelerator Pack]))
+		if(!get_property("_streamsCrossed").to_boolean() && possessEquipment($item[Protonic Accelerator Pack]) && auto_is_valid($effect[Total Protonic Reversal]))
 		{
 			cli_execute("crossstreams");
 		}
@@ -1050,13 +1414,19 @@ boolean doBedtime()
 			auto_log_info("You have a tea tree to shake!", "blue");
 		}
 
+		if (auto_haveAugustScepter() && get_property("_augSkillsCast").to_int() < 5)
+		{
+			auto_log_info("You still have " + (5 - get_property("_augSkillsCast").to_int()) + " August Scepter casts remaining! Perhaps consider casting Aug 13th/30th for more rollover adventures, and/or 7th for a buff for tomorrow?", "blue");
+		}
+
+		meatReserveMessage();
+
 		if (get_property("spadingData") != "")
 		{
-			cli_execute("spade");
+			cli_execute("spade autoconfirm");
 		}
 
 		auto_log_info("You are probably done for today, beep.", "blue");
 		return true;
 	}
-	return false;
 }

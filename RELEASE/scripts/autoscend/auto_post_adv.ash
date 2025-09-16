@@ -4,17 +4,25 @@ void auto_beaten_handler()
 {
 	if(have_effect($effect[Beaten Up]) == 0)
 	{
-		remove_property("_auto_beatenUpTracked");	//if we still have it by now then we were unable to restore it but it expired naturally.
+		set_property("auto_beatenUpLastAdv", false);
+		return;		//we are not beaten up. nothing to handle
+	}
+	if(last_choice() == 1467) {
+		auto_log_info("Getting beaten up here gave us 5 adventures, that's a win.");
 		return;
 	}
-	if(!get_property("_auto_beatenUpTracked").to_boolean())		//we only want to track each instance of beaten up once
+	set_property("auto_beatenUpCount", get_property("auto_beatenUpCount").to_int() + 1);
+	string loc = get_property("auto_beatenUpLocations");
+	if(loc != "") loc += ",";
+	loc += "day:" +my_daycount()+ ":level:" +my_level()+ ":place:" +my_location();
+	set_property("auto_beatenUpLocations", loc);
+	set_property("auto_beatenUpLastAdv", true);
+
+	buffMaintain($effect[They\'ve Got Fleas]);
+	if(my_level() < 11 || get_property("sidequestJunkyardCompleted") != "none")	//don't risk blocking effect persisting in gremlins quest
 	{
-		set_property("_auto_beatenUpTracked", true);
-		set_property("auto_beatenUpCount", get_property("auto_beatenUpCount").to_int() + 1);
-		string loc = get_property("auto_beatenUpLocations");
-		if(loc != "") loc += ",";
-		loc += "day:" +my_daycount()+ ":level:" +my_level()+ ":place:" +my_location();
-		set_property("auto_beatenUpLocations", loc);
+		//try to avoid getting beaten up again
+		buffMaintain($effect[Everything Is Bananas]);
 	}
 	
 	if(my_location() == $location[The X-32-F Combat Training Snowman])
@@ -35,7 +43,6 @@ void auto_beaten_handler()
 		use_skill(1, $skill[Tongue of the Walrus]);
 		if(have_effect($effect[Beaten Up]) == 0)
 		{
-			remove_property("_auto_beatenUpTracked");
 			return;
 		}
 		else
@@ -54,39 +61,44 @@ boolean auto_post_adventure()
 		return true;
 	}
 
+	if($strings[Coyote Ugly, Gutterbound, The Too-Much Booze Blues, What's that smell?, Hey\, baby.  Wanna wrestle?] contains get_property("lastEncounter"))
+	{
+		abort("Adventured while drunk and got drunken stupor NC: " + get_property("lastEncounter"));
+	}
+
+	set_property("auto_nextEncounter","");
+
 	/* This tracks noncombat-forcers like Clara's Bell and stench jelly, which
 	 * set our noncombat rate to maximum until we encounter a noncombat.
 	 * Superlikelies do not reset this effect. There's some complexity here -
 	 * since some noncombats precede a combat encounter (for example, the
 	 * Cosmetics Wraith in the Haunted Bathroom), and we SHOULD reset the
-	 * noncombat-forcer in those cases.
-	 *
-	 * Current solution: Have a list of monsters that can only be encountered
-	 * via noncombats. Have a list of semirare encounters.
-	 */
+	 * noncombat-forcer in those cases.*/
 
-	static boolean[monster] __MONSTERS_FOLLOWING_NONCOMBATS = $monsters[
-		// These monsters follow noncombats, so we should reset the noncombat-forcing tracker when we fight one.
-		Protector Spectre, ancient protector spirit, ancient protector spirit (The Hidden Apartment Building), ancient protector spirit (The Hidden Hospital), ancient protector spirit (The Hidden Office Building), ancient protector spirit (The Hidden Bowling Alley), Cosmetics wraith,
-
-		// If |lastEncounter| was a noncombat adventure,
-		// it'll to_monster() to $monster[none].
-		none
-	];
-
-	if(get_property("auto_forceNonCombatSource") != "" && (__MONSTERS_FOLLOWING_NONCOMBATS contains get_property("lastEncounter").to_monster() && !is_superlikely(get_property("lastEncounter"))))
+	if(get_property("auto_forceNonCombatSource") != "" && !auto_haveQueuedForcedNonCombat())
 	{
-		auto_log_info("Encountered (assumed) forced noncombat: " + get_property("lastEncounter"), "blue");
+		// possible to get desired NC when preparing spikes/avalanche. Only log usage if NC was actually forced
+		if((get_property("auto_forceNonCombatSource") != "jurassic parka" || get_property("auto_parkaSpikesDeployed").to_boolean()) &&
+		(get_property("auto_forceNonCombatSource") != "McHugeLarge left ski") || get_property("auto_avalancheDeployed").to_boolean())
+		{
+			auto_log_info("Encountered forced noncombat: " + get_property("lastEncounter"), "blue");
+			handleTracker(get_property("auto_forceNonCombatSource"), my_location().to_string(), get_property("lastEncounter"), "auto_forcedNC");
+		}
 		set_property("auto_forceNonCombatSource", "");
-		set_property("auto_forceNonCombatTurn", -1);
+		set_property("auto_forceNonCombatLocation", "");
+		set_property("auto_parkaSpikesDeployed", false);
+		set_property("auto_avalancheDeployed", false);
 	}
 
-	if(get_property("auto_forceNonCombatSource") != "" && get_property("auto_forceNonCombatTurn").to_int() > my_turncount() - 10)
+	if(get_property("auto_instakillSource") != "" && get_property("auto_instakillSuccess").to_boolean())
 	{
-		auto_log_warning("It's been 10 adventures since we forced a noncombat (" + get_property("auto_forceNonCombatSource") +
-			"), am going to assume it happened but we missed it.", "blue");
-		set_property("auto_forceNonCombatSource", "");
-		set_property("auto_forceNonCombatTurn", 0);
+		auto_log_info("Successful instakill with: " + get_property("auto_instakillSource"), "blue");
+		if(get_property("lastEncounter").to_monster() == last_monster()) //only track the combat part of a combat+NC encounter (like everfull dart perks)
+		{
+			handleTracker(get_property("lastEncounter"), get_property("auto_instakillSource"), "auto_instakill");
+		}
+		set_property("auto_instakillSource", "");
+		set_property("auto_instakillSuccess", false);
 	}
 
 	if(have_effect($effect[Eldritch Attunement]) > 0)
@@ -100,7 +112,7 @@ boolean auto_post_adventure()
 	}
 
 	//We need to do this early, and even if postAdventure handling is done.
-	if(my_path() == "The Source")
+	if(in_theSource())
 	{
 		if(get_property("auto_diag_round").to_int() == 0)
 		{
@@ -120,12 +132,12 @@ boolean auto_post_adventure()
 		}
 	}
 
-	if((get_property("lastEncounter") == "Daily Briefing") && (auto_my_path() == "License to Adventure"))
+	if((get_property("lastEncounter") == "Daily Briefing") && in_lta())
 	{
 		set_property("_auto_bondBriefing", "started");
 	}
 
-	if((get_property("_villainLairProgress").to_int() < 999) && ((get_property("_villainLairColor") != "") || get_property("_villainLairColorChoiceUsed").to_boolean()) && (auto_my_path() == "License to Adventure") && (my_location() == $location[Super Villain\'s Lair]))
+	if((get_property("_villainLairProgress").to_int() < 999) && ((get_property("_villainLairColor") != "") || get_property("_villainLairColorChoiceUsed").to_boolean()) && in_lta() && (my_location() == $location[Super Villain\'s Lair]))
 	{
 		if(item_amount($item[Can Of Minions-Be-Gone]) > 0)
 		{
@@ -160,6 +172,11 @@ boolean auto_post_adventure()
 	{
 		use(1, $item[Creepy Voodoo Doll]);
 	}
+	// mayday supply package drops from first combat of the day if you have this IOTM
+	if(item_amount($item[MayDay&trade; supply package]) > 0 && auto_is_valid($item[MayDay&trade; supply package]))
+	{
+		use(1, $item[MayDay&trade; supply package]);
+	}
 
 
 	if((my_location() == $location[The Lower Chambers]) && (item_amount($item[[2334]Holy MacGuffin]) == 0))
@@ -181,6 +198,11 @@ boolean auto_post_adventure()
 		auto_log_info("Postadventure skipped by clingy modifier.", "green");
 		return true;
 	}
+
+	//save some MP while buffing
+	item[int] beforeBuffs = auto_saveEquipped();
+	addToMaximize("-1000mana cost, -tie");
+	equipMaximizedGear();
 
 	if(have_effect($effect[Cunctatitis]) > 0)
 	{
@@ -235,7 +257,7 @@ boolean auto_post_adventure()
 		}
 	}
 
-	if(my_path() == "Nuclear Autumn")
+	if(in_nuclear())
 	{
 		buffMaintain($effect[Juiced and Loose], 35, 1, 1);
 		buffMaintain($effect[Hardened Sweatshirt], 35, 1, 1);
@@ -250,8 +272,14 @@ boolean auto_post_adventure()
 
 		if((my_meat() > 5000) && ((my_turncount() >= 50) || get_property("falloutShelterChronoUsed").to_boolean()))
 		{
-			buffMaintain($effect[Rad-Pro Tected], 0, 1, 1);
+			buffMaintain($effect[Rad-Pro Tected]);
 		}
+	}
+
+	if(in_zombieSlayer())
+	{
+		buffMaintain($effect[Chow Downed], 15, 1, 1);
+		buffMaintain($effect[Scavengers Scavenging], 20, 1, 1);
 	}
 
 	if (isActuallyEd())
@@ -273,7 +301,7 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Power of Heka], 10, 1, 10);
 			buffMaintain($effect[Hide of Sobek], 10, 1, 10);
 
-			if(!($locations[Hippy Camp, The Outskirts Of Cobb\'s Knob, Pirates of the Garbage Barges, The Secret Government Laboratory] contains my_location()))
+			if(!($locations[The Hippy Camp, The Outskirts Of Cobb\'s Knob, Pirates of the Garbage Barges, The Secret Government Laboratory] contains my_location()))
 			{
 				buffMaintain($effect[Bounty of Renenutet], 10, 1, 10);
 			}
@@ -296,6 +324,27 @@ boolean auto_post_adventure()
 			acquireMP(100, my_meat());
 		}
 		return true;
+	}
+	if(in_aosol())
+	{
+		if(my_class() == $class[Pig Skinner])
+		{
+			buffMaintain($effect[Cheerled], 30, 1, 10);
+			buffMaintain($effect[Taped Up], 20, 1, 10);
+			//buffMaintain($effect[Stretched], 10, 1, 10); In Providers
+		}
+		if(my_class() == $class[Cheese Wizard])
+		{
+			//buffMaintain($effect[Shifted Reality], 25, 1, 10);  In Providers
+			buffMaintain($effect[Cheddarmored], 5, 1, 10);
+			//buffMaintain($effect[Queso Fustulento], 10, 1, 10); //Only on boss fights
+		}
+		if(my_class() == $class[Jazz Agent])
+		{
+			buffMaintain($effect[Reliable Backup], 10, 1, 10);
+			buffMaintain($effect[Soothing Flute], 15, 1, 10);
+			//buffMaintain($effect[Tricky Timpani], 30, 1, 10); //Only on boss fights
+		}
 	}
 
 	skill libram = preferredLibram();
@@ -321,13 +370,10 @@ boolean auto_post_adventure()
 		{
 			use_skill(1, $skill[Disco Nap]);
 		}
-		else if(isGeneralStoreAvailable())
+		else if(isGalaktikAvailable() && auto_is_valid($item[Anti-Anti-Antidote]))
 		{
-			buyUpTo(1, $item[Anti-Anti-Antidote], 30);
-			if(!in_glover())
-			{
-				use(1, $item[Anti-Anti-Antidote]);
-			}
+			auto_buyUpTo(1, $item[Anti-Anti-Antidote]);
+			use(1, $item[Anti-Anti-Antidote]);
 		}
 	}
 
@@ -341,68 +387,16 @@ boolean auto_post_adventure()
 
 	if((my_class() == $class[Turtle Tamer]) && guild_store_available())
 	{
-		buffMaintain($effect[Eau de Tortue], 0, 1, 1);
+		buffMaintain($effect[Eau de Tortue]);
 	}
 
 	if((monster_level_adjustment() > 140) && !inAftercore())
 	{
-		buffMaintain($effect[Butt-Rock Hair], 0, 1, 1);
-		buffMaintain($effect[Go Get \'Em\, Tiger!], 0, 1, 1);
+		buffMaintain($effect[Butt-Rock Hair]);
+		buffMaintain($effect[Go Get \'Em\, Tiger!]);
 	}
 
-	if(my_path() == "Community Service")
-	{
-		if(auto_have_skill($skill[Summon BRICKOs]) && (get_property("_brickoEyeSummons").to_int() < 3))
-		{
-			libram = $skill[Summon BRICKOs];
-		}
-		else if(auto_have_skill($skill[Summon Taffy]))
-		{
-			libram = $skill[Summon Taffy];
-		}
-
-		int missing = (my_maxmp() - my_mp()) / 15;
-		int casts = (my_soulsauce() - 25) / 5;
-		if(casts < 0)
-		{
-			casts = 0;
-		}
-		int regen = casts;
-		if(casts > missing)
-		{
-			regen = missing;
-		}
-		if(regen > 0)
-		{
-			use_skill(regen, $skill[Soul Food]);
-		}
-
-		buffMaintain($effect[Inscrutable Gaze], 30, 1, 1);
-		buffMaintain($effect[Big], 50, 1, 1);
-
-		boolean [skill] toCast = $skills[Acquire Rhinestones, Advanced Cocktailcrafting, Advanced Saucecrafting, Bowl Full of Jelly, Chubby and Plump, Communism!, Eye and a Twist, Grab a Cold One, Lunch Break, Pastamastery, Perfect Freeze, Prevent Scurvy and Sobriety, Request Sandwich, Spaghetti Breakfast, Summon Alice\'s Army Cards, Summon Carrot, Summon Confiscated Things, Summon Crimbo Candy, Summon Geeky Gifts, Summon Hilarious Objects, Summon Holiday Fun!, Summon Kokomo Resort Pass, Summon Tasteful Items];
-
-		foreach sk in toCast
-		{
-			if(is_unrestricted(sk) && auto_have_skill(sk) && (my_mp() >= mp_cost(sk)))
-			{
-				use_skill(1, sk);
-			}
-		}
-
-		if((libram != $skill[none]) && ((my_mp() - mp_cost(libram)) > 15) && (mp_cost(libram) < 75))
-		{
-			use_skill(1, libram);
-		}
-		if((libram != $skill[none]) && ((my_mp() - mp_cost(libram)) > 175))
-		{
-			use_skill(1, libram);
-		}
-
-		return true;
-	}
-
-	if(auto_my_path() == "The Source")
+	if(in_theSource())
 	{
 		if((get_property("sourceInterval").to_int() > 0) && (get_property("sourceInterval").to_int() <= 600) && (get_property("sourceAgentsDefeated").to_int() >= 9))
 		{
@@ -425,7 +419,13 @@ boolean auto_post_adventure()
 			use_skill(1, $skill[Soul Rotation]);
 		}
 		int missing = (my_maxmp() - my_mp()) / 15;		//soul food restores 15 MP per cast.
-		int casts = min(missing, my_soulsauce() / 5);	//soul food costs 5 soulsauce per cast.
+		int availableSauce = my_soulsauce();
+		int minMPexpected = my_mp() + (availableSauce - 5) * 15; //mp expected after soul food if last 5 soulsauce is saved
+		if(availableSauce >= 5 && minMPexpected > 100 && minMPexpected > 0.8*my_maxmp())
+		{
+			availableSauce -= 5;	//keep 5 soulsauce for soul bubble if not missing much MP
+		}
+		int casts = min(missing, availableSauce / 5);	//soul food costs 5 soulsauce per cast.
 		if(casts > 0)
 		{
 			use_skill(casts, $skill[Soul Food]);
@@ -453,22 +453,24 @@ boolean auto_post_adventure()
 		use_skill(1, $skill[Thunderheart]);
 	}
 
-
-	effect awolDesired = awol_walkBuff();
-	if(awolDesired != $effect[none])
+	if(in_awol())
 	{
-		if(!inAftercore())
+		effect awolDesired = awol_walkBuff();
+		if(awolDesired != $effect[none])
 		{
-			int awolMP = 85;
-			if(my_class() == $class[Beanslinger])
+			if(!inAftercore())
 			{
-				awolMP = 95;
+				int awolMP = 85;
+				if(my_class() == $class[Beanslinger])
+				{
+					awolMP = 95;
+				}
+				buffMaintain(awolDesired, awolMP, 1, 20);
 			}
-			buffMaintain(awolDesired, awolMP, 1, 20);
-		}
-		else
-		{
-			buffMaintain(awolDesired, 120, 1, 1);
+			else
+			{
+				buffMaintain(awolDesired, 120, 1, 1);
+			}
 		}
 	}
 
@@ -510,6 +512,7 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Leash of Linguini], 20, 1, 10);
 			if(regen > 10.0)
 			{
+				buffMaintain($effect[Thoughtful Empathy], 25, 1, 10);
 				buffMaintain($effect[Empathy], 25, 1, 10);
 			}
 		}
@@ -549,6 +552,8 @@ boolean auto_post_adventure()
 		{
 			buffMaintain($effect[Disco Fever], 40, 1, 10);
 		}
+		item[int] preShield = auto_saveEquipped();
+		auto_equipAprilShieldBuff(); //get secondary buffs provided by shield when the trivial class skills are used
 		buffMaintain($effect[Saucemastery], 25, 1, 4);
 		buffMaintain($effect[Pasta Oneness], 25, 1, 4);
 
@@ -559,6 +564,7 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Mariachi Mood], 25, 1, 4);
 			buffMaintain($effect[Disco State of Mind], 25, 1, 4);
 		}
+		auto_loadEquipped(preShield);
 	}
 	else if(my_maxmp() < 80)
 	{
@@ -571,6 +577,7 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Leash of Linguini], 30, 1, 10);
 			if(regen > 10.0)
 			{
+				buffMaintain($effect[Thoughtful Empathy], 35, 1, 10);
 				buffMaintain($effect[Empathy], 35, 1, 10);
 			}
 		}
@@ -616,6 +623,8 @@ boolean auto_post_adventure()
 		{
 			buffMaintain($effect[Disco Fever], 60, 1, 10);
 		}
+		item[int] preShield = auto_saveEquipped();
+		auto_equipAprilShieldBuff(); //get secondary buffs provided by shield when the trivial class skills are used
 		buffMaintain($effect[Saucemastery], 50, 3, 4);
 		buffMaintain($effect[Pasta Oneness], 50, 3, 4);
 		if(regen > 8.2)
@@ -625,6 +634,7 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Mariachi Mood], 50, 3, 4);
 			buffMaintain($effect[Disco State of Mind], 50, 3, 4);
 		}
+		auto_loadEquipped(preShield);
 	}
 	else if(my_maxmp() < 170)
 	{
@@ -638,6 +648,7 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Leash of Linguini], 35, 1, 10);
 			if(regen > 4.0)
 			{
+				buffMaintain($effect[Thoughtful Empathy], 50, 1, 10);
 				buffMaintain($effect[Empathy], 50, 1, 10);
 			}
 		}
@@ -695,6 +706,8 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Takin\' It Greasy], 50, 1, 5);
 			buffMaintain($effect[Intimidating Mien], 50, 1, 5);
 		}
+
+		buffMaintain($effect[Polka of Plenty], 110, 1, 5);
 	}
 	else
 	{
@@ -736,6 +749,7 @@ boolean auto_post_adventure()
 		}
 
 		buffMaintain($effect[Fat Leon\'s Phat Loot Lyric], 250, 1, 10);
+		buffMaintain($effect[Polka of Plenty], 150, 1, 5);
 
 		if(my_level() < 13)
 		{
@@ -746,6 +760,7 @@ boolean auto_post_adventure()
 		if(buff_familiar)
 		{
 			buffMaintain($effect[Empathy], 50, 1, 10);
+			buffMaintain($effect[Thoughtful Empathy], 50, 1, 10);
 			buffMaintain($effect[Leash of Linguini], 35, 1, 10);
 		}
 
@@ -812,6 +827,8 @@ boolean auto_post_adventure()
 		{
 			buffMaintain($effect[Disco Fever], 120, 1, 10);
 		}
+		item[int] preShield = auto_saveEquipped();
+		auto_equipAprilShieldBuff(); //get secondary buffs provided by shield when the trivial class skills are used
 		if(my_primestat() == $stat[Muscle])
 		{
 			buffMaintain($effect[Seal Clubbing Frenzy], 200, 5, 4);
@@ -827,6 +844,7 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Saucemastery], 200, 5, 4);
 			buffMaintain($effect[Pasta Oneness], 200, 5, 4);
 		}
+		auto_loadEquipped(preShield);
 		if(familiar_weight(my_familiar()) < 20)
 		{
 			buffMaintain($effect[Curiosity of Br\'er Tarrypin], 50, 1, 2);
@@ -838,9 +856,12 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Jingle Jangle Jingle], 120, 1, 2);		//familiar acts more often
 		}
 		buffMaintain($effect[A Few Extra Pounds], 200, 1, 2);
-		buffMaintain($effect[Boon of the War Snapper], 200, 1, 5);
-		buffMaintain($effect[Boon of She-Who-Was], 200, 1, 5);
-		buffMaintain($effect[Boon of the Storm Tortoise], 200, 1, 5);
+		if(my_class() == $class[Turtle Tamer])
+		{
+			buffMaintain($effect[Boon of the War Snapper], 200, 1, 5);
+			buffMaintain($effect[Boon of She-Who-Was], 200, 1, 5);
+			buffMaintain($effect[Boon of the Storm Tortoise], 200, 1, 5);
+		}
 
 		buffMaintain($effect[Ruthlessly Efficient], 50, 1, 5);
 		buffMaintain($effect[Mathematically Precise], 150, 1, 5);
@@ -893,30 +914,47 @@ boolean auto_post_adventure()
 		// +Stat expressions based on mainstat
 		if(my_primestat() == $stat[Muscle])
 		{
-			auto_faceCheck("Patient Smile");
+			auto_faceCheck($effect[Patient Smile]);
 		}
 		if(my_primestat() == $stat[Moxie])
 		{
-			auto_faceCheck("Knowing Smile");
+			auto_faceCheck($effect[Knowing Smile]);
 		}
 		if(my_primestat() == $stat[Mysticality])
 		{
 			// If Gaze succeeds Smile will fail the check and vice versa
-			auto_faceCheck("Inscrutable Gaze");
-			auto_faceCheck("Wry Smile");
+			auto_faceCheck($effect[Inscrutable Gaze]);
+			auto_faceCheck($effect[Wry Smile]);
 		}
 
 		// Catch-all Expressions in decending order of importance (in case we could not get a stat specific one)
-		auto_faceCheck("Inscrutable Gaze");
-		auto_faceCheck("Wry Smile");
-		auto_faceCheck("Patient Smile");
-		auto_faceCheck("Knowing Smile");
+		auto_faceCheck($effect[Inscrutable Gaze]);
+		auto_faceCheck($effect[Wry Smile]);
+		auto_faceCheck($effect[Patient Smile]);
+		auto_faceCheck($effect[Knowing Smile]);
 
 		if(my_meat() > meatReserve()+5000)		//these are only worth it if you have lots of excess meat
 		{
 			buffMaintain($effect[Carol of the Thrills], 30, 1, 1);		//3MP/adv for non ATs. +3 XP/fight
 			buffMaintain($effect[Aloysius\' Antiphon of Aptitude], 40, 1, 1);	//4MP/adv for non ATs. +3 XP/fight split equally 1 per stat.
 		}
+
+		// items which give stats
+		buffMaintain($effect[Scorched Earth]);
+		buffMaintain($effect[Wisdom of Others]);
+		// Only use these if we've got plenty of meat and aren't max level
+		// Otherwise we'll autosell them
+		if(!auto_ignoreExperience() && my_level()<13)
+		{
+			foreach it in $items[azurite, eye agate, lapis lazuli]
+			{
+				if(item_amount(it) > 0 && auto_is_valid(it))
+				{
+					use(it, item_amount(it));
+				}
+			}
+		}
+		
 	}
 
 
@@ -969,7 +1007,7 @@ boolean auto_post_adventure()
 		{
 			bjornify_familiar($familiar[grim brother]);
 		}
-		if((my_bjorned_familiar() == $familiar[grimstone golem]) && (get_property("_grimstoneMaskDropsCrown") == 1) && have_familiar($familiar[El Vibrato Megadrone]))
+		if((my_bjorned_familiar() == $familiar[grimstone golem]) && (get_property("_grimstoneMaskDropsCrown").to_int() == 1) && have_familiar($familiar[El Vibrato Megadrone]))
 		{
 			bjornify_familiar($familiar[el vibrato megadrone]);
 		}
@@ -979,7 +1017,15 @@ boolean auto_post_adventure()
 		}
 	}
 
-	if(my_path() == "Heavy Rains")
+	if (in_bugbear() && item_amount($item[Key-o-tron]) > 0 && my_location().zone != "Mothership")
+	{
+		if ($monsters[scavenger bugbear, hypodermic bugbear, batbugbear, bugbear scientist, bugaboo, Black Ops Bugbear, Battlesuit Bugbear Type, ancient unspeakable bugbear, trendy bugbear chef] contains last_monster())
+		{
+			use(1, $item[Key-o-tron]);
+		}
+	}
+
+	if(in_heavyrains())
 	{
 		auto_log_info("Post adventure done: Thunder: " + my_thunder() + " Rain: " + my_rain() + " Lightning: " + my_lightning(), "green");
 	}
@@ -1019,13 +1065,13 @@ boolean auto_post_adventure()
 			buffMaintain($effect[Purple Reign], 0, 6, 10);
 		}
 
-		buffMaintain($effect[Gummi-Grin], 0, 1, 1);
-		buffMaintain($effect[Strong Resolve], 0, 1, 1);
-		buffMaintain($effect[Irresistible Resolve], 0, 1, 1);
-		buffMaintain($effect[Brilliant Resolve], 0, 1, 1);
-		buffMaintain($effect[From Nantucket], 0, 1, 1);
-		buffMaintain($effect[Squatting and Thrusting], 0, 1, 1);
-		buffMaintain($effect[You Read the Manual], 0, 1, 1);
+		buffMaintain($effect[Gummi-Grin]);
+		buffMaintain($effect[Strong Resolve]);
+		buffMaintain($effect[Irresistible Resolve]);
+		buffMaintain($effect[Brilliant Resolve]);
+		buffMaintain($effect[From Nantucket]);
+		buffMaintain($effect[Squatting and Thrusting]);
+		buffMaintain($effect[You Read the Manual]);
 		buyableMaintain($item[Hair Spray], 1, 200, my_class() != $class[Turtle Tamer]);
 		buyableMaintain($item[Blood of the Wereseal], 1, 3500, (monster_level_adjustment() > 135));
 		buyableMaintain($item[Ben-gal&trade; Balm], 1, 200);
@@ -1067,9 +1113,43 @@ boolean auto_post_adventure()
 			abort("We have been disavowed...");
 		}
 	}
-
+	
+	//Remove the mana cost reduction from maximize statement
+	removeFromMaximize("-1000mana cost");
 	remove_property("auto_combatDirective");
 	remove_property("auto_digitizeDirective");
+	
+	//try to catch infinite loop where we repeatedly try to do the same thing.
+	//works with code found in auto_pre_adv.ash
+	if(my_session_adv() == get_property("_auto_inf_session_adv").to_int())
+	{
+		auto_log_debug("auto_post_adv.ash detected that no adventure was spent since last auto_pre_adv.ash");
+		
+		//count how many times in a row we went with no adv spent
+		set_property("_auto_inf_counter", get_property("_auto_inf_counter").to_int()+1);
+		
+		//if last monster changed it means we are doing free combats
+		if(get_property("_auto_inf_last_monster").to_monster() != last_monster())
+		{
+			remove_property("_auto_inf_counter");		//reset counter
+		}
+		set_property("_auto_inf_last_monster", last_monster());
+		
+		if(get_property("_auto_inf_counter").to_int() >= 30)
+		{
+			auto_log_error("no adventure was spent " +get_property("_auto_inf_counter")+ " times in a row which suggests we are stuck in an infinite loop. Stopping autoscend");
+			remove_property("_auto_inf_counter");
+			set_property("auto_interrupt", true);
+		}
+		else if(get_property("_auto_inf_counter").to_int() > 10)
+		{
+			auto_log_warning("no adventure was spent " +get_property("_auto_inf_counter")+ " times in a row");
+		}
+	}
+	else		//clear values
+	{
+		remove_property("_auto_inf_counter");
+	}
 	
 	auto_log_info("Post Adventure done, beep.", "purple");
 	return true;

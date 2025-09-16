@@ -4,6 +4,8 @@
 # exempt from 10 lbs restriction in KOLHS path
 Steam-Powered Cheerleader	path:KOLHS
 # Fairies with a multiplier
+# 1.5x multiplier fairy
+Jill-of-All-Trades	item:LED candle>0
 # 1.4x multiplier fairy
 Steam-Powered Cheerleader	prop:_cheerleaderSteam>150
 # 1.3x multiplier fairy
@@ -14,23 +16,29 @@ Steam-Powered Cheerleader	prop:_cheerleaderSteam>100
 Steam-Powered Cheerleader	prop:_cheerleaderSteam>50
 # 1.1x multiplier fairy
 Steam-Powered Cheerleader	prop:_cheerleaderSteam>0
+# fairy with useful special powers above a certain weight so we want to preload it
+Grey Goose	prop_boolean:auto_prioritizeGoose
 # fairy that generates extra adventures
 Reagnimated Gnome	!path:Heavy Rains
 # Fairywhelp that drops x and o without limit. 1 each per 9 combats. 3 o for food. 3 x for drink, 23 x to skip half bridge.
 XO Skeleton
 # Fairy that drops bacon with no limit. 1 per combat
 Intergnat
+# Fairyeverything
+Jill-of-All-Trades
 # Fairyballs
 Elf Operative
 Optimistic Candle
 Rockin' Robin
 God Lobster	item:God Lobster's Crown>0
+Hobo in Sheep's Clothing
 # Fairywhelps
 Pocket Professor
 Garbage Fire
 Dandy Lion
 Choctopus
 # Fairychauns
+Chest Mimic
 Fist Turkey
 Cat Burglar
 Angry Jung Man
@@ -46,9 +54,14 @@ Casagnova Gnome
 Psychedelic Bear
 Piano Cat
 # Slightly special fairies
+Grey Goose
 Ghost of Crimbo Carols
 Red-Nosed Snapper
 Pair of Stomping Boots	!path:G-Lover
+# Fairy that gives extra equipment drops. Works as starfish if fed, but we don't feed it.
+Slimeling
+# More slightly special fairies
+Cooler Yeti
 Gelatinous Cubeling
 Steam-Powered Cheerleader
 Obtuse Angel
@@ -61,12 +74,11 @@ Frozen Gravy Fairy
 Spooky Gravy Fairy
 # Physical damage fairy
 Bowlet
+Crimbo Elf
 # Barely special fairies
 Mechanical Songbird
 Grouper Groupie
 Peppermint Rhino
-# Fairy that if fed equipment will regen MP and give extra drops. Since we do not make use of this functionality it is just a fairy.
-Slimeling
 # Turtles are cute
 Syncopated Turtle
 # The original

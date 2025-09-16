@@ -1,8 +1,185 @@
 # This is meant for items that have a date of 2021
 
+boolean auto_haveCrystalBall()
+{
+	item crystal_ball = wrap_item($item[miniature crystal ball]);
+	return possessEquipment(crystal_ball) && auto_is_valid(crystal_ball) && pathHasFamiliar();
+}
+
+monster crystalBallMonster(location loc)
+{
+	// returns a monster if the crystal ball predicts one in the location
+
+	string [int] crystalBallPredictions = get_property("crystalBallPredictions").split_string("[|]");
+	if(crystalBallPredictions[0] == "")
+	{
+		return $monster[none];	// no prediction
+	}
+	foreach i in crystalBallPredictions
+	{
+        string [int] thisPrediction = crystalBallPredictions[i].split_string(":"); // turn:location:monster
+		// turn: thisPrediction[0].to_int() is useless unless mafia fails to update the property
+		if(thisPrediction[1].to_location() != loc)
+		{
+			continue;
+		}
+		return thisPrediction[2].to_monster();
+	}
+	return $monster[none];	// no prediction in the location
+}
+
+boolean auto_allowCrystalBall(monster predicted_monster, location loc)
+{	
+	// blacklisted locations
+	if($locations[Next to that barrel with something burning in it, Out by that rusted-out car, over where the old tires are, near an abandoned refrigerator] contains loc)
+	{
+		//predictions can't tell tool gremlins apart from non tool gremlins
+		return false;
+	}
+	
+	// allowed elsewhere if no prediction
+	if(predicted_monster == $monster[none])
+	{
+		return true;
+	}
+
+	// next monster forced by mapping overrides any prediction so no need to forbid equipping crystal ball 
+	if(get_property("mappingMonsters").to_boolean())
+	{
+		return true;
+	}
+
+	// next monster forced by clover so no need to forbid equipping crystal ball
+	if(have_effect($effect[Lucky!]) > 0)
+	{
+		if(loc == $location[The Hidden Temple])
+		{
+			// the only lucky adventure with a fight that could use the chance of item drop bonus
+			return true;
+		}
+	}
+
+	//if already forced by something else, no need to handle your ball
+	//pre_adv, or simulatePreAdvForCrystalBall, handles this as it already tracks burningDelay and forced encounters
+	
+	if(is_banished(predicted_monster) || auto_wantToReplace(predicted_monster,loc) || auto_wantToBanish(predicted_monster,loc) || auto_wantToBanish(monster_phylum(predicted_monster), loc))
+	{
+		// next prediction is unwanted, do not allow
+		return false;
+	}
+	
+	return true;
+}
+
+boolean auto_forceHandleCrystalBall(location loc)
+{
+	//full support would need changing how autoscend chooses tasks to move between zones and reset predictions
+	//instead just allow it to make unwanted monsters less likely and confirm wanted monsters
+
+	monster predicted_monster = crystalBallMonster(loc);
+
+	boolean shouldForceEquip;
+	if(predicted_monster != $monster[none])
+	{
+		if((auto_wantToSniff(predicted_monster,loc) || 	//sniff targets are wanted monsters TODO it's not exhaustive, neither is careAboutDrops()
+		isSniffed(predicted_monster) ||	//ball will likely be forbidden before getting to last monster, but last wanted one isn't sniff target
+		$monsters[Monstrous Boiler, beanbat] contains predicted_monster)	//some wanted monsters are not sniff targets
+		&& auto_combat_appearance_rates(loc,false)[predicted_monster] < 100)		//other monsters possible
+		{
+			shouldForceEquip = true;	// should not waste the prediction entered in queue
+		}
+	}
+	
+	item crystal_ball = wrap_item($item[miniature crystal ball]);
+	if(shouldForceEquip)
+	{
+		addToMaximize(`+equip {crystal_ball.to_string()}`);
+		set_property("auto_nextEncounter",to_string(predicted_monster));
+		return true;	//handled
+	}
+	else if(!auto_allowCrystalBall(predicted_monster, loc))
+	{
+		addToMaximize(`-equip {crystal_ball.to_string()}`);
+		return true;	//handled
+	}
+
+	//equipping the crystal ball can't hurt but it is neither forced nor forbidden
+	//pre_adv will consider giving it a maximizer bonus after checking if monster queue control is wanted
+	//removeFromMaximize(`-equip {crystal_ball.to_string()}`);	//this should already get reset after every loop or maximizer simulation
+	return false;
+}
+
+void simulatePreAdvForCrystalBall(location place)
+{
+	// used only when simulating maximizer equipment
+	// replicates most of pre_adv monster queue checks in order to know if miniature crystal ball will be allowed
+	
+	boolean considerCrystalBallBonus;
+	if(!auto_queueIgnore() && get_property("auto_nextEncounter").to_monster() == $monster[none] && 
+	!auto_forceHandleCrystalBall(place))
+	{
+		//equipping the crystal ball can't hurt but it is neither forced nor forbidden
+		//will consider giving it a maximizer bonus after checking if monster queue control is wanted
+		considerCrystalBallBonus = true;
+	}
+	
+	monster [int] possible_monsters;
+	if(get_property("auto_nextEncounter").to_monster() != $monster[none])
+	{
+		//next monster is forced by zone mechanics or by now locked-in miniature crystal ball
+		possible_monsters[count(possible_monsters)] = get_property("auto_nextEncounter").to_monster();
+	}
+	else
+	{
+		foreach i,mon in get_monsters(place)
+		{
+			if(appearance_rates(place)[mon] > 0)
+			{
+				possible_monsters[count(possible_monsters)] = mon;
+			}
+		}
+	}
+	
+	boolean zoneHasUnwantedMonsters;
+	boolean zoneHasWantedMonsters;
+	if (!auto_queueIgnore())	//next encounter is a monster from the zone
+	{
+		foreach i,mon in possible_monsters
+		{
+			if(auto_wantToYellowRay(mon, place))
+			{
+				zoneHasWantedMonsters = true;
+			}
+			if(auto_wantToBanish(mon, place))
+			{
+				zoneHasUnwantedMonsters = true;
+			}
+			if(auto_wantToReplace(mon, place))
+			{
+				zoneHasUnwantedMonsters = true;
+			}
+			if(auto_wantToSniff(mon, place))
+			{
+				zoneHasWantedMonsters = true;
+			}
+		}
+	}
+	if(considerCrystalBallBonus)
+	{
+		//give miniature crystal ball a maximizer bonus only if the location has monsters to avoid or target
+		int crystalBallMaximizerBonus = 0 + (zoneHasUnwantedMonsters ? 300 : 0) + (zoneHasWantedMonsters ? 300 : 0);
+		if(crystalBallMaximizerBonus != 0)
+		{
+			item crystal_ball = wrap_item($item[miniature crystal ball]);
+			addToMaximize("+" + crystalBallMaximizerBonus + "bonus "+crystal_ball.to_string());
+		}
+	}
+}
+
 boolean auto_haveEmotionChipSkills()
 {
-	return auto_is_valid($skill[Emotionally Chipped]) && have_skill($skill[Emotionally Chipped]);
+	return (auto_is_valid($skill[Emotionally Chipped]) && have_skill($skill[Emotionally Chipped])) || 
+	  (auto_is_valid($skill[Replica Emotionally Chipped]) && have_skill($skill[Replica Emotionally Chipped]));
 }
 
 boolean auto_canFeelEnvy()
@@ -12,7 +189,7 @@ boolean auto_canFeelEnvy()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelEnvyUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelEnvyUsed").to_int() < 3;
 }
 
 boolean auto_canFeelHatred()
@@ -22,7 +199,7 @@ boolean auto_canFeelHatred()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelHatredUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelHatredUsed").to_int() < 3;
 }
 
 boolean auto_canFeelNostalgic()
@@ -32,7 +209,7 @@ boolean auto_canFeelNostalgic()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelNostalgicUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelNostalgicUsed").to_int() < 3;
 }
 
 boolean auto_canFeelPride()
@@ -42,7 +219,7 @@ boolean auto_canFeelPride()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelPrideUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelPrideUsed").to_int() < 3;
 }
 
 boolean auto_canFeelSuperior()
@@ -52,7 +229,7 @@ boolean auto_canFeelSuperior()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelSuperiorUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelSuperiorUsed").to_int() < 3;
 }
 
 boolean auto_canFeelLonely()
@@ -62,7 +239,7 @@ boolean auto_canFeelLonely()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelLonelyUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelLonelyUsed").to_int() < 3;
 }
 
 boolean auto_canFeelExcitement()
@@ -72,7 +249,7 @@ boolean auto_canFeelExcitement()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelExcitementUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelExcitementUsed").to_int() < 3;
 }
 
 boolean auto_canFeelNervous()
@@ -82,7 +259,7 @@ boolean auto_canFeelNervous()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelNervousUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelNervousUsed").to_int() < 3;
 }
 
 boolean auto_canFeelPeaceful()
@@ -92,7 +269,7 @@ boolean auto_canFeelPeaceful()
 	{
 		return false;
 	}
-	return auto_haveEmotionChipSkills() && get_property("_feelPeacefulUsed") < 3;
+	return auto_haveEmotionChipSkills() && get_property("_feelPeacefulUsed").to_int() < 3;
 }
 
 boolean auto_haveBackupCamera()
@@ -110,7 +287,104 @@ void auto_enableBackupCameraReverser()
 
 int auto_backupUsesLeft()
 {
-	return 11 + (my_path() == "You, Robot" ? 5 : 0) - get_property("_backUpUses").to_int();
+	if (auto_haveBackupCamera()) 
+	{
+		return 11 + (in_robot() ? 5 : 0) - get_property("_backUpUses").to_int();
+	}
+	return 0;
+}
+
+boolean auto_backupTarget()
+{
+	// can't backup if we don't have camera or it isn't available
+    if (!auto_haveBackupCamera()) 
+	{
+        return false;
+    }
+
+	// can't backup if no more charges left
+	if (auto_backupUsesLeft() < 1) 
+	{
+        return false;
+    }
+
+	// don't backup into a fight we just lost. Prevent continuously getting beaten up
+	if(get_property("auto_beatenUpLastAdv").to_boolean())
+	{
+		return false;
+	}
+
+	// don't backup if nextAdventure is None as a combat was somewhere that is not a zone
+	if (get_property("nextAdventure").to_location() == $location[None])
+	{
+		return false;
+	}
+
+	// don't backup into oliver's (it won't be free and will waste a free fight and currently also mess up tracking)
+	if (get_property("nextAdventure").to_location() == $location[An Unusually Quiet Barroom Brawl])
+	{
+		return false;
+	}
+
+	// determine if we want to backup
+	boolean wantBackupLFM = item_amount($item[barrel of gunpowder]) < 5 && get_property("sidequestLighthouseCompleted") == "none" && internalQuestStatus("questL12War") == 1 && !auto_hasAutumnaton() && !in_koe();
+	int habitatZombieEvil = (auto_habitatMonster() == $monster[modern zmobie] ? (auto_habitatFightsLeft() * (5 + cyrptEvilBonus())) : 0);
+	boolean wantBackupZmobie = get_property("cyrptAlcoveEvilness").to_int() > (14 + cyrptEvilBonus() + habitatZombieEvil) && internalQuestStatus("questL07Cyrptic") == 0;
+
+	switch (get_property("lastCopyableMonster").to_monster()) {
+		case $monster[lobsterfrogman]:
+			if(wantBackupLFM)
+				return true; 
+			break;
+		case $monster[modern zmobie]:
+			if(wantBackupZmobie) 
+				return true;
+			break;
+		case $monster[sausage goblin]:
+			if(!wantBackupLFM && !wantBackupZmobie && auto_backupUsesLeft() > 5)
+				return true;
+			break;
+		case $monster[eldritch tentacle]:
+			//backup tentacles if lots of backups remaining or use all remaining charges if at end of day
+			if(auto_backupUsesLeft() > 6)
+				return true;
+			if (my_adventures() <= (1 + auto_advToReserve()) && inebriety_left() == 0 && stomach_left() < 1)
+				return true;
+			break;
+		case $monster[fantasy bandit]:
+			if(!acquiredFantasyRealmToken() && auto_backupUsesLeft() >= (5 - fantasyBanditsFought()) && auto_habitatMonster() != $monster[fantasy bandit])
+				return true;
+			break;
+		case $monster[Green Ops Soldier]:
+			if(get_property("hippiesDefeated").to_int() > 399 && get_property("hippiesDefeated").to_int() < 1000 && !in_koe())
+				return true;
+			break;
+		case $monster[Skinflute]:
+		case $monster[Camel's Toe]:
+			if (needStarKey() && item_amount($item[star]) < 8 && item_amount($item[line]) < 7)
+				return true;
+			break;
+		default: break;
+    }
+
+	return false;
+}
+
+boolean auto_backupToYourLastEnemy(location loc)
+{
+	// can't backup if we don't have the camera or no charges left or no valid target/location
+	if (!auto_haveBackupCamera() || auto_backupUsesLeft() == 0 || !auto_backupTarget() || loc == $location[none])
+	{
+		return false;
+	}
+
+	if (autoEquip($slot[acc3], $item[backup camera]))
+	{
+		set_property("auto_nextEncounter", get_property("lastCopyableMonster"));
+		return autoAdv(loc);
+	}
+	set_property("auto_nextEncounter","");
+	return false;
 }
 
 boolean auto_havePowerPlant()
@@ -397,9 +671,92 @@ boolean auto_getBattery(item target)
 	return false;
 }
 
+boolean have_fireworks_shop()
+{
+	if(in_koe())
+	{
+		// can't access fireworks shop in kindom of exploathing
+		return false;
+	}
+	if(is_werewolf())
+	{
+		return false; //can't access fireworks shop as a werewolf
+	}
+	if(item_amount($item[Clan VIP Lounge Key]) == 0)
+	{
+		return false;
+	}
+	if(!auto_is_valid($item[clan underground fireworks shop]))
+	{
+		return false;
+	}
+	return get_property("_fireworksShop").to_boolean();
+}
+
+boolean auto_buyFireworksHat()
+{
+	// equipment doesn't give buffs in these paths
+	if(in_gnoob() || in_tcrs())
+	{
+		return false;
+	}
+
+	if(!have_fireworks_shop())
+	{
+		return false;
+	}
+
+	if(get_property("_fireworksShopHatBought").to_boolean())
+	{
+		return false;
+	}
+
+	if(my_meat() < npc_price($item[porkpie-mounted popper]) + meatReserve() && auto_is_valid($item[porkpie-mounted popper]))
+	{
+		auto_log_info("Want to buy a hat from the fireworks shop, but don't have enough meat. Will try again later.");
+		return false;
+	}
+
+	// noncombat is most valuable hat but has no effect in LAR and can't be removed in Hat Trick
+	if(auto_can_equip($item[porkpie-mounted popper]) && !(in_lar() || in_hattrick()))
+	{
+		float simNonCombat = providePlusNonCombat(auto_combatModCap(), $location[noob cave], true, true);
+		if(simNonCombat < auto_combatModCap())
+		{
+			retrieve_item(1, $item[porkpie-mounted popper]);
+			return true;
+		}
+	}
+
+	// +combat hat is second most useful but has no effect in LAR and kills the professor and can't be removed in Hat Trick
+	if(auto_can_equip($item[sombrero-mounted sparkler]) && !(in_lar() || in_wereprof() || in_hattrick()))
+	{
+		float simCombat = providePlusCombat(auto_combatModCap(), $location[noob cave], true, true);
+		if(simCombat < auto_combatModCap())
+		{
+			retrieve_item(1, $item[sombrero-mounted sparkler]);
+			return true;
+		}
+	}
+
+	// ML hat is least useful
+	// todo: add functionality to simulate acquiring ML instead of just looking at current ML
+	if(auto_can_equip($item[fedora-mounted fountain]))
+	{
+		if(monster_level_adjustment() < get_property("auto_MLSafetyLimit").to_int())
+		{
+			retrieve_item(1, $item[fedora-mounted fountain]);
+			return true;
+		}
+	}
+	
+	return false;
+}
+
 boolean auto_haveFireExtinguisher()
 {
-	return possessEquipment($item[industrial fire extinguisher]) && auto_is_valid($item[industrial fire extinguisher]);
+	item exting = wrap_item($item[industrial fire extinguisher]);
+	return possessEquipment(exting) && auto_is_valid(exting);
 }
 
 int auto_fireExtinguisherCharges()
@@ -408,15 +765,20 @@ int auto_fireExtinguisherCharges()
 	return get_property("_fireExtinguisherCharge").to_int();
 }
 
-// returns zone specific skill if in usable zone and hasn't been used yet there this acension. Otherwise returns empty string
+// returns zone specific skill if in usable zone and hasn't been used yet there this ascension. Otherwise returns empty string
 string auto_FireExtinguisherCombatString(location place)
 {
-	if(auto_fireExtinguisherCharges() < 20)
+	if(auto_fireExtinguisherCharges() < 20 || !auto_is_valid($skill[Fire Extinguisher: Zone Specific]))
 	{
 		return "";
 	}
 
-	// once per acension uses
+	if(in_wereprof())
+	{
+		return "";
+	}
+
+	// once per ascension uses
 	if($locations[Guano Junction, The Batrat and Ratbat Burrow, The Beanbat Chamber] contains place && !get_property("fireExtinguisherBatHoleUsed").to_boolean())
 	{
 		//sonar-in-a-biscuits are used before combat, if available. Knock a wall down if any are still standing
@@ -437,12 +799,12 @@ string auto_FireExtinguisherCombatString(location place)
 		return "skill " + $skill[Fire Extinguisher: Zone Specific];
 	}
 
-	if(place == $location[The Smut Orc Logging Camp] && !get_property("fireExtinguisherChasmUsed").to_boolean() && get_property("chasmBridgeProgress").to_int() < 30)
+	if(place == $location[The Smut Orc Logging Camp] && !get_property("fireExtinguisherChasmUsed").to_boolean() && get_property("chasmBridgeProgress").to_int() < bridgeGoal() && !auto_hasAutumnaton())
 	{
 		return "skill " + $skill[Fire Extinguisher: Zone Specific];
 	}
 
-	if(place == $location[The Arid\, Extra-Dry Desert] && $location[The Arid\, Extra-Dry Desert].turns_spent > 0 && !get_property("fireExtinguisherDesertUsed").to_boolean())
+	if(place == $location[The Arid\, Extra-Dry Desert] && $location[The Arid\, Extra-Dry Desert].turns_spent > 0 && !get_property("fireExtinguisherDesertUsed").to_boolean() && !auto_haveBofa())
 	{
 		return "skill " + $skill[Fire Extinguisher: Zone Specific];
 	}
@@ -455,4 +817,186 @@ string auto_FireExtinguisherCombatString(location place)
 boolean auto_canExtinguisherBeRefilled()
 {
 	return auto_haveFireExtinguisher() && in_wildfire() && !get_property("_fireExtinguisherRefilled").to_boolean();
+}
+
+boolean auto_haveColdMedCabinet()
+{
+	return auto_get_campground() contains $item[cold medicine cabinet] && auto_is_valid($item[cold medicine cabinet]);
+}
+
+int auto_CMCconsultsLeft()
+{
+	if(!auto_haveColdMedCabinet())
+	{
+		return 0;
+	}
+	int consultsUsed = get_property("_coldMedicineConsults").to_int();
+	if(consultsUsed > 5)
+	{
+		auto_log_warning("Mafia's tracking of Cold Medicine Cabinet consults today errored (reported > 5 uses today). Reseting to 5.", "red");
+		consultsUsed = 5;
+	}
+	return 5 - consultsUsed;
+}
+
+boolean auto_CMCconsultAvailable()
+{
+	if(auto_CMCconsultsLeft() == 0)
+	{
+		return false;
+	}
+
+	int nextConsult = get_property("_nextColdMedicineConsult").to_int();
+	//prior to first use each day, prop value is 0
+	if(nextConsult == 0)
+	{
+		return true;
+	}
+	return total_turns_played() >= nextConsult;
+}
+
+void auto_CMCconsult()
+{
+	//consume previously bought items if conditions are right
+	//perhaps pill was bought yesterday with full spleen
+	boolean notAboutToDoNuns()
+	{
+		//should avoid getting more free kill charges when about to do nuns because the fights would be capped to 1000 meat
+		if(my_level() >= 12)
+		{
+			if(my_location() == $location[The Themthar Hills])
+			{
+				return false;
+			}
+			if(my_location() == $location[the battlefield (frat uniform)] && get_property("sidequestNunsCompleted") == "none")
+			{
+				int hippiesDefeated = get_property("hippiesDefeated").to_int();
+				if(hippiesDefeated <= 208 && auto_bestWarPlan().do_nuns)
+				{	
+					int turnsUntilNuns = min(16,ceil(max(0,191.0 - hippiesDefeated)/auto_warKillsPerBattle()));
+					if(get_property("breathitinCharges").to_int() + 5 >= turnsUntilNuns)
+					{
+						return false;	//may do nuns before breathitin charges get used up
+					}
+				}
+			}
+			if(get_property("auto_hippyInstead").to_boolean() && internalQuestStatus("questL12War") == 1 && get_property("sidequestNunsCompleted") == "none")
+			{
+				if(auto_bestWarPlan().do_nuns && (get_property("sidequestOrchardCompleted") != "none" || !auto_bestWarPlan().do_orchard))
+				{
+					return false;	//war started and about to start nuns as hippy anytime?
+				}
+			}
+		}
+		return true;
+	}
+	boolean shouldChewBreathitin()
+	{
+		if(my_location() == $location[The Hidden Park])
+		{
+			//already free [dense liana] should come right after and would waste charges
+			//can't know how many combats will remain in the park which is ideally noncombats
+			return false;
+		}
+		return notAboutToDoNuns();
+	}
+	if(shouldChewBreathitin() && !isActuallyEd() && !haveSpleenFamiliar() && !can_interact())
+	{
+		pullXWhenHaveY($item[Breathitin&trade;],1,0);
+	}
+	if(item_amount($item[Breathitin&trade;]) > 0 && shouldChewBreathitin() && !can_interact())
+	{
+		autoChew(1,$item[Breathitin&trade;]);
+	}
+	if(item_amount($item[Homebodyl&trade;]) > 0 && freeCrafts() < 5)
+	{
+		autoChew(1,$item[Homebodyl&trade;]);
+	}
+	//use fleshazole if we don't have much meat
+	if(item_amount($item[Fleshazole&trade;]) > 0 && my_meat() + 2000 < meatReserve() && my_level() >= 5)
+	{
+		autoChew(1,$item[Fleshazole&trade;]);
+	}
+	
+	if(!auto_CMCconsultAvailable())
+	{
+		return;
+	}
+
+	if(get_property("_auto_coldMedicineLocked").to_boolean())
+	{
+		//haven't visited yet since it was last locked so always visit to update available consults
+		set_property("_auto_coldMedicineLocked","false");
+	}
+	else if(auto_CMCconsultsLeft() <= 2 && freeCrafts() >= 5 && possessEquipment($item[ice crown]) && my_meat() >= meatReserve())
+	{
+		//only looking for Breathitin from at least 11 fights spent underground
+		if(my_location().environment != "underground")
+		{
+			//if Breathitin was not available last turn and last location was not underground it will still not be available now so no visit needed
+			return;
+		}
+	}
+
+	int bestOption = -1;
+	item consumableBought = $item[none];
+	string page = visit_url("campground.php?action=workshed");
+	if(contains_text(page, "Breathitin"))
+	{
+		auto_log_info("Buying Breathitin pill from CMC", "blue");
+		bestOption = 5;
+		consumableBought = $item[Breathitin&trade;];
+	}
+	else if (!(auto_is_valid($familiar[cookbookbat]) && have_familiar($familiar[cookbookbat]) && knoll_available()) && contains_text(page, "Homebodyl") && freeCrafts() < 5)
+	{
+		// don't need free crafts if we have the Cookbookbat in knoll signs.
+		// Cookbookbat gives us 5 free cooks every day & we only use free crafting on cooking in knoll signs
+		auto_log_info("Buying Homebodyl pill from CMC", "blue");
+		bestOption = 5;
+		consumableBought = $item[Homebodyl&trade;];
+	}
+	else if ((!in_small() || in_hardcore()) && contains_text(page, "ice crown"))
+	{
+		// don't need the ice crown in Normal Small as we pull hats.
+		auto_log_info("Buying ice crown from CMC", "blue");
+		bestOption = 1;
+	}
+	else if(contains_text(page, "Fleshazole") && my_meat() + 2000 < meatReserve())
+	{
+		auto_log_info("Buying Fleshazole pill from CMC", "blue");
+		bestOption = 5;
+		consumableBought = $item[Fleshazole&trade;];
+	}
+	else if (auto_CMCconsultsLeft() > 2 && !can_interact() && !in_small() && !in_kolhs())
+
+	{
+		//reserve the last 2 consults for something more valuable than booze/food
+		//consume logic will drink/eat later
+		if(inebriety_left() > 0)
+		{
+			auto_log_info("Buying booze from CMC", "blue");
+			bestOption = 3;
+		}
+		else if(fullness_left() > 0)
+		{
+			auto_log_info("Buying food from CMC", "blue");
+			bestOption = 2;
+		}
+	}
+
+	if(bestOption != -1)
+	{
+		set_property("_auto_coldMedicineLocked","true");	//when taking a consultation, set property as a reminder to always check again next time consultations are unlocked
+		run_choice(bestOption);
+	}
+
+	if(consumableBought == $item[Homebodyl&trade;] || (consumableBought == $item[Breathitin&trade;] && shouldChewBreathitin()))
+	{
+		autoChew(1,consumableBought);
+	}
+
+	if(consumableBought == $item[Fleshazole&trade;] && my_meat() < meatReserve() && my_level() >= 5)
+	{
+		autoChew(1,consumableBought);
+	}	
 }

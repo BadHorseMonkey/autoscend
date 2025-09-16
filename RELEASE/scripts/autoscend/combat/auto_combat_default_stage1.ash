@@ -30,9 +30,22 @@ string auto_combatDefaultStage1(int round, monster enemy, string text)
 	// Path = wildfire
 	retval = auto_combatWildfireStage1(round, enemy, text);
 	if(retval != "") return retval;
-	
-	string combatState = get_property("auto_combatHandler");
-	
+
+	// Path = Fall of the Dinosaurs
+	retval = auto_combatFallOfTheDinosaursStage1(round, enemy, text);
+	if(retval != "") return retval;
+
+	// Path = WereProfessor
+	retval = auto_combatWereProfessorStage1(round, enemy, text);
+	if(retval != "") return retval;
+
+	//In Avant Guard, waffle the bodyguard in Themthar Hills ASAP to replace with the Dirty Thieving Brigand
+	if(in_avantGuard() && ag_is_bodyguard() && item_amount($item[waffle]) > 0 && my_location() == $location[The Themthar Hills] && enemy != $monster[Dirty Thieving Brigand])
+	{
+		handleTracker(enemy, $item[waffle], "auto_replaces");
+		return useItems($item[waffle], $item[none]);
+	}
+
 	if(enemy == $monster[Your Shadow])
 	{
 		if(in_plumber())
@@ -88,7 +101,12 @@ string auto_combatDefaultStage1(int round, monster enemy, string text)
 		{
 			return "item " +hand_1;
 		}
-		abort("Uh oh, I ran out of healing items to use against your shadow");
+		if (item_amount($item[scented massage oil])==0) {
+			abort("Uh oh, I ran out of healing items to use against your shadow");
+		}
+		else {
+		  abort("Uh oh, I ran out of simple healing items to use against your shadow. You could win manually with Scented Massage oil though.");
+		}
 	}
 
 	if(enemy == $monster[Wall Of Meat])
@@ -121,22 +139,13 @@ string auto_combatDefaultStage1(int round, monster enemy, string text)
 			return useSkill($skill[Belch the Rainbow], false);
 		}
 
-		int sources = 0;
-		foreach damage in $strings[Cold Damage, Hot Damage, Sleaze Damage, Spooky Damage, Stench Damage] {
-			if(numeric_modifier(damage) > 0) {
-				sources += 1;
-			}
+		if(canUse($skill[Kneebutt], false))
+		{
+			return useSkill($skill[Kneebutt], false);
 		}
-
-		if (sources >= 4) {
-			if(canUse($skill[Headbutt], false))
-			{
-				return useSkill($skill[Headbutt], false);
-			}
-			if(canUse($skill[Clobber], false))
-			{
-				return useSkill($skill[Clobber], false);
-			}
+		if(canUse($skill[Headbutt], false))
+		{
+			return useSkill($skill[Headbutt], false);
 		}
 		return "attack with weapon";
 	}
@@ -152,6 +161,11 @@ string auto_combatDefaultStage1(int round, monster enemy, string text)
 			return useSkill($skill[Unleash The Greash], false);
 		}
 
+		if(canUse($skill[Surprisingly Sweet Slash], true) && auto_remainingCandyCaneSlashes() > 0)
+		{
+			return useSkill($skill[Surprisingly Sweet Slash], true);
+		}
+		
 		if(canUse($skill[Garbage Nova], false))
 		{
 			return useSkill($skill[Garbage Nova], false);
@@ -163,8 +177,14 @@ string auto_combatDefaultStage1(int round, monster enemy, string text)
 		}
 	}
 	
+	//nanorhino familiar buff acquisition. Must be the first action taken in combat.
+	//done after puzzle bosses. if puzzle bosses get a random buff that is ok, we would rather beat the puzzle boss.
+	retval = auto_combat_nanorhinoBuff(round, enemy, text);
+	if(retval != "") return retval;
+	
 	//pickpocket. do this after puzzle bosses but before escapes/instakills
-	if(!contains_text(combatState, "pickpocket") && ($classes[Accordion Thief, Avatar of Sneaky Pete, Disco Bandit, Gelatinous Noob] contains my_class()) && contains_text(text, "value=\"Pick") && canSurvive(2.0))
+	boolean ableToPickpocket = ($classes[Accordion Thief, Avatar of Sneaky Pete, Disco Bandit, Gelatinous Noob] contains my_class() || have_effect($effect[Riboflavin\']) > 0);
+	if(!combat_status_check("pickpocket") && ableToPickpocket && contains_text(text, "value=\"Pick") && canSurvive(4.0))
 	{
 		boolean tryIt = false;
 		foreach i, drop in item_drops_array(enemy)
@@ -177,25 +197,70 @@ string auto_combatDefaultStage1(int round, monster enemy, string text)
 			{
 				tryIt = true;
 			}
+			if(tryIt)
+			{
+				if(auto_have_skill($skill[Sticky Fingers]) && canSurvive(8.0))
+				{
+					//free meat, tryIt
+				}
+				else if((drop.type != "p") && effectiveDropChance(drop.drop,drop.rate.to_float()) >= 100)
+				{
+					tryIt = false;	//don't need to pickpocket if capped drop chance
+				}
+				if(tryIt)
+				{
+					break;
+				}
+			}
 		}
 		if(tryIt)
 		{
-			set_property("auto_combatHandler", combatState + "(pickpocket)");
+			combat_status_add("pickpocket");
 			string attemptSteal = steal();
 			return "pickpocket";
 		}
 	}
-	
+
+	if (auto_canCircadianRhythm() && (auto_circadianRhythmTarget(enemy) || auto_circadianRhythmTarget(monster_phylum(enemy))) && canUse($skill[Recall Facts: %phylum Circadian Rhythms]) && !ag_is_bodyguard())
+	{
+		handleTracker($skill[Recall Facts: %phylum Circadian Rhythms], monster_phylum(enemy), "auto_otherstuff");
+		return useSkill($skill[Recall Facts: %phylum Circadian Rhythms]);
+	}
+
+	if (auto_canHabitat() && auto_habitatTarget(enemy) && canUse($skill[Recall Facts: Monster Habitats]) && !ag_is_bodyguard())
+	{
+		handleTracker($skill[Recall Facts: Monster Habitats], enemy, "auto_copies");
+		return useSkill($skill[Recall Facts: Monster Habitats]);
+	}
+
+	if(auto_canRWBBlast() && auto_RWBBlastTarget(enemy) && canUse($skill[%fn\, fire a Red\, White and Blue Blast]))
+	{
+		handleTracker($skill[%fn\, fire a Red\, White and Blue Blast], enemy, "auto_copies");
+		return useSkill($skill[%fn\, fire a Red\, White and Blue Blast]);
+	}
+
+	monster backedUpMonster = get_property("lastCopyableMonster").to_monster();
+	// reserve last 2 advs for end of day free fights
+	boolean reserveAdvsForFreeFights = my_adventures() < 3 && !isFreeMonster(backedUpMonster);
+	if(auto_backupTarget() && enemy != backedUpMonster && canUse($skill[Back-Up to your Last Enemy])
+		&& !reserveAdvsForFreeFights)
+	{
+		handleTracker(enemy, $skill[Back-Up to your Last Enemy], "auto_replaces");
+		handleTracker(backedUpMonster, $skill[Back-Up to your Last Enemy], "auto_copies");
+		return useSkill($skill[Back-Up to your Last Enemy]);	
+	}
+
 	//saber copy (iotm) is different from other copies in that it comes with a free escape
 	//technically it is an ender. but one that should be run before duplications.
-	if(canUse($skill[Use the Force]) && (auto_saberChargesAvailable() > 0) && (enemy != auto_saberCurrentMonster()))
-	{
-		if(enemy == $monster[Blooper] && needDigitalKey())
-		{
-			handleTracker(enemy, $skill[Use the Force], "auto_copies");
-			return auto_combatSaberCopy();
-		}
-	}
+	//2023 update: no longer saber copy blooper due to 8-bit realm changes. Leaving commented so there is an example of how to saber copy
+	//if(canUse($skill[Use the Force]) && (auto_saberChargesAvailable() > 0) && (enemy != auto_saberCurrentMonster()))
+	//{
+	//	if(enemy == $monster[Blooper] && needDigitalKey())
+	//	{
+	//		handleTracker(enemy, $skill[Use the Force], "auto_copies");
+	//		return auto_combatSaberCopy();
+	//	}
+	//}
 	
 	//[Melodramedary] familiar skill which turns monster into a group of 2. Should be done before deleveling.
 	if ($monsters[pygmy bowler, bearpig topiary animal, elephant (meatcar?) topiary animal, spider (duck?) topiary animal, red butler] contains enemy && canUse($skill[%fn\, spit on them!]))
@@ -203,9 +268,16 @@ string auto_combatDefaultStage1(int round, monster enemy, string text)
 		handleTracker($skill[%fn\, spit on them!], enemy, "auto_otherstuff");
 		return useSkill($skill[%fn\, spit on them!], true);
 	}
+
+	//[Patriotic Eagle] familiar skill that gives a useful buff
+	if (canUse($skill[%fn\, let\'s pledge allegiance to a Zone]))
+	{
+		auto_getCitizenZone(my_location(), true);
+		return useSkill($skill[%fn\, let\'s pledge allegiance to a Zone], true);
+	}
 	
 	//duplicate turns the enemy from a single enemy into a mob containing 2 copies of this enemy. Doubling their stats and doubling their drops
-	if(canUse($skill[Duplicate]) && (get_property("_sourceTerminalDuplicateUses").to_int() == 0) && !inAftercore() && (auto_my_path() != "Nuclear Autumn"))
+	if(canUse($skill[Duplicate]) && (get_property("_sourceTerminalDuplicateUses").to_int() == 0) && !inAftercore() && !in_nuclear())
 	{
 		if($monsters[Dairy Goat] contains enemy)
 		{

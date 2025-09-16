@@ -9,12 +9,14 @@ string auto_combatHandler(int round, monster enemy, string text);
 
 #####################################################
 //defined in /autoscend/combat/auto_combat_util.ash
+int defaultRoundLimit();
 boolean haveUsed(skill sk);
 boolean haveUsed(item it);
 int usedCount(skill sk);
 int usedCount(item it);
 void markAsUsed(skill sk);
 void markAsUsed(item it);
+boolean canUse(skill sk, boolean onlyOnce, boolean inCombat);
 boolean canUse(skill sk, boolean onlyOnce);
 boolean canUse(skill sk);
 boolean canUse(item it, boolean onlyOnce);
@@ -25,14 +27,23 @@ string useItem(item it, boolean mark);
 string useItem(item it);
 string useItems(item it1, item it2, boolean mark);
 string useItems(item it1, item it2);
+boolean isSniffed(monster enemy, skill sk);
+boolean isSniffed(monster enemy);
+skill getSniffer(monster enemy, boolean inCombat);
+skill getSniffer(monster enemy);
+skill getCopier(monster enemy, boolean inCombat);
+skill getCopier(monster enemy);
 skill getStunner(monster enemy);
 boolean enemyCanBlocksSkills();
 boolean canSurvive(float mult, int add);
 boolean canSurvive(float mult);
 boolean hasClubEquipped();
 string auto_saberTrickMeteorShowerCombatHandler(int round, monster enemy, string text);				
-string findBanisher(int round, monster enemy, string text);	
+string findBanisher(int round, monster enemy, string text);
+string findPhylumBanisher(int round, phylum enemyphylum, string text);
+string banisherCombatString(phylum enemyphylum, location loc, boolean inCombat);
 string banisherCombatString(monster enemy, location loc, boolean inCombat);
+string banisherCombatString(phylum enemyphylum, location loc);
 string banisherCombatString(monster enemy, location loc);
 string yellowRayCombatString(monster target, boolean inCombat, boolean noForceDrop);
 string yellowRayCombatString(monster target, boolean inCombat);
@@ -40,24 +51,27 @@ string yellowRayCombatString(monster target);
 string yellowRayCombatString();
 string replaceMonsterCombatString(monster target, boolean inCombat);
 string replaceMonsterCombatString(monster target);
-string replaceMonsterCombatString();			
+string replaceMonsterCombatString();
+float turns_to_kill(float dmg);
+boolean combat_status_check(string mark);
+void combat_status_add(string mark);
+boolean wantToForceDrop(monster enemy);
+boolean wantToDouse(monster enemy);
+int maxRoundsToDouse(monster enemy);
+boolean canSurviveShootGhost(monster enemy, int shots);
+int auto_remainingMildEvilUses();
 
 #####################################################
 //defined in /autoscend/combat/auto_combat_awol.ash
-void awol_combat_helper(string page);
-
-#####################################################
-//defined in /autoscend/combat/auto_combat_community_service.ash
-string cs_combatNormal(int round, monster enemy, string text);			
-string cs_combatXO(int round, monster enemy, string text);				
-string cs_combatYR(int round, monster enemy, string text);				
-string cs_combatKing(int round, monster enemy, string text);			
-string cs_combatWitch(int round, monster enemy, string text);			
-string cs_combatLTB(int round, monster enemy, string text);				
+void awol_combat_helper(string page);		
 
 #####################################################
 //defined in /autoscend/combat/auto_combat_ed.ash
 string auto_edCombatHandler(int round, monster enemy, string text);		
+
+#####################################################
+//defined in /autoscend/combat/auto_combat_mr2012.ash
+string auto_combat_nanorhinoBuff(int round, monster enemy, string text);
 
 #####################################################
 //defined in /autoscend/combat/auto_combat_ocrs.ash
@@ -96,6 +110,12 @@ string auto_combatDarkGyffteStage2(int round, monster enemy, string text);
 void disguises_combat_helper(int round, monster enemy, string text);
 string auto_combatDisguisesStage1(int round, monster enemy, string text);
 string auto_combatDisguisesStage5(int round, monster enemy, string text);
+
+#####################################################
+//defined in /autoscend/combat/auto_combat_fall_of_the-dinosaurs.ash
+void fotd_combat_helper();
+string auto_combatFallOfTheDinosaursStage1(int round, monster enemy, string text);
+string auto_combatFallOfTheDinosaursStage5(int round, monster enemy, string text);
 
 #####################################################
 //defined in /autoscend/combat/auto_combat_kingdom_of_exploathing.ash
@@ -137,5 +157,21 @@ string auto_combatTheSourceStage4(int round, monster enemy, string text);
 string auto_combatBHYStage1(int round, monster enemy, string text);
 
 #####################################################
+//defined in /autoscend/combat/auto_combat_wereprofessor.ash
+string auto_combatWereProfessorStage1(int round, monster enemy, string text);
+string auto_combatWereProfessorStage4(int round, monster enemy, string text);
+string auto_combatWereProfessorStage5(int round, monster enemy, string text);
+
+#####################################################
 //defined in /autoscend/combat/auto_combat_wildfire.ash
 string auto_combatWildfireStage1(int round, monster enemy, string text);
+
+#####################################################
+//defined in /autoscend/combat/auto_combat_you_robot.ash
+string auto_combat_robot_stage5(int round, monster enemy, string text);
+
+#####################################################
+//defined in /autoscend/combat/auto_combat_zombie_slayer.ash
+string auto_combatZombieSlayerStage3(int round, monster enemy, string text);
+string auto_combatZombieSlayerStage4(int round, monster enemy, string text);
+string auto_combatZombieSlayerStage5(int round, monster enemy, string text);

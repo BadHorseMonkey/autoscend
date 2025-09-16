@@ -1,15 +1,20 @@
-void fallout_initializeSettings()
+boolean in_nuclear()
 {
-	if(my_path() == "Nuclear Autumn")
+	return my_path() == $path[Nuclear Autumn];
+}
+
+void nuclear_initializeSettings()
+{
+	if(in_nuclear())
 	{
 		set_property("auto_getBeehive", true);
 	}
 }
 
 
-void fallout_initializeDay(int day)
+void nuclear_initializeDay(int day)
 {
-	if(my_path() != "Nuclear Autumn")
+	if(!in_nuclear())
 	{
 		return;
 	}
@@ -40,16 +45,6 @@ void fallout_initializeDay(int day)
 
 		if(get_property("auto_day_init").to_int() < 2)
 		{
-
-			if(get_property("auto_dickstab").to_boolean() && chateaumantegna_available())
-			{
-				boolean[item] furniture = chateaumantegna_decorations();
-				if(!furniture[$item[Ceiling Fan]])
-				{
-					chateaumantegna_buyStuff($item[Ceiling Fan]);
-				}
-			}
-
 			if(item_amount($item[gym membership card]) > 0)
 			{
 				use(1, $item[gym membership card]);
@@ -59,17 +54,16 @@ void fallout_initializeDay(int day)
 			{
 				acquireHermitItem($item[Seal Tooth]);
 			}
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			pullXWhenHaveY($item[hand in glove], 1, 0);
 			pullXWhenHaveY($item[blackberry galoshes], 1, 0);
-			pullXWhenHaveY(whatHiMein(), 1, 0);
 		}
 	}
 	else if(day == 3)
 	{
 		if(get_property("auto_day_init").to_int() < 3)
 		{
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			set_property("auto_day_init", 3);
 		}
 	}
@@ -77,15 +71,15 @@ void fallout_initializeDay(int day)
 	{
 		if(get_property("auto_day_init").to_int() < 4)
 		{
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			set_property("auto_day_init", 4);
 		}
 	}
 }
 
-boolean fallout_buySkills()
+boolean nuclear_buySkills()
 {
-	if(my_path() != "Nuclear Autumn")
+	if(!in_nuclear())
 	{
 		return false;
 	}
@@ -325,14 +319,14 @@ Missing: 858, 866
 }
 
 
-boolean LM_fallout()
+boolean LM_nuclear()
 {
-	if(my_path() != "Nuclear Autumn")
+	if(!in_nuclear())
 	{
 		return false;
 	}
 
-	fallout_buySkills();
+	nuclear_buySkills();
 
 	return false;
 }

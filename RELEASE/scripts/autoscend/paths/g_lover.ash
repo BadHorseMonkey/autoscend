@@ -1,11 +1,11 @@
 boolean in_glover()
 {
-	return auto_my_path() == "G-Lover";
+	return my_path() == $path[G-Lover];
 }
 
 void glover_initializeDay(int day)
 {
-	if (!in_glover()) 
+	if(!in_glover()) 
 	{
 		return;
 	}
@@ -22,7 +22,7 @@ void glover_initializeSettings()
 		set_property("gnasirProgress", get_property("gnasirProgress").to_int() | 16);
 
 		//Buy Crude Oil Congealer and um... A-Boo Glues.
-		if(item_amount($item[Crude Oil Congealer]) == 0)
+		if((item_amount($item[Crude Oil Congealer]) == 0) && (item_amount($item[G]) > 0))
 		{
 			cli_execute("make " + $item[Crude Oil Congealer]);
 		}
@@ -49,11 +49,13 @@ boolean glover_usable(string it)
 		return true;
 	}
 	item checkItem = it.to_item();
-	if (checkItem != $item[none] && $items[ninja Carabiner, ninja Crampons, ninja Rope,
+	if(checkItem != $item[none] && $items[SpinMaster&trade; lathe, // it works since there's no "use" link
+	&quot;I voted!&quot; sticker, // free fights still work for I voted! sticker
+	ninja Carabiner, ninja Crampons, ninja Rope,
 	eXtreme scarf, snowboarder pants, eXtreme mittens, linoleum ore, chrome ore, asbestos ore,
 	loadstone, amulet of extreme plot significance, titanium assault umbrella, antique machete,
 	half-size scalpel, head mirror, wet stew, UV-resistant compass, Talisman o' Namsilat, Unstable Fulminate,
-	Orcish baseball cap, Orcish frat-paddle, filthy knitted dread sack, filthy corduroys,
+	Orcish baseball cap, Orcish frat-paddle, filthy knitted dread sack, filthy corduroys, continuum transfunctioner,
 	beer helmet, distressed denim pants, reinforced beaded headband, bullet-proof corduroys] contains checkItem)
 	{
 		// these are all used for quest furthering porpoises so they still "work" even though they don't contain G's
@@ -81,7 +83,7 @@ boolean LM_glover()
 	{
 		return false;
 	}
-	foreach it in $items[Chaos Butterfly, Cornucopia, Disassembled Clover, Filthy Poultice, Metal Meteoroid, Oil Of Parrrlay, Pec Oil, Polysniff Perfume, Smut Orc Keepsake Box, Sonar-In-A-Biscuit, T.U.R.D.S. Key, Ten-Leaf Clover, Tonic Djinn, Turtle Wax]
+	foreach it in $items[Chaos Butterfly, Cornucopia, Disassembled Clover, Filthy Poultice, Metal Meteoroid, Oil Of Parrrlay, Pec Oil, Polysniff Perfume, Smut Orc Keepsake Box, Sonar-In-A-Biscuit, T.U.R.D.S. Key, 11-Leaf Clover, Tonic Djinn, Turtle Wax]
 	{
 		if(item_amount(it) > 0)
 		{

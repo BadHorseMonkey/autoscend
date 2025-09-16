@@ -1,6 +1,6 @@
 boolean in_plumber()
 {
-	return my_path() == "Path of the Plumber";
+	return my_path() == $path[Path of the Plumber];
 }
 
 boolean plumber_initializeSettings()
@@ -394,25 +394,46 @@ boolean plumber_skillValid(skill sk)
 	return true;
 }
 
-boolean plumber_equipTool(stat st)
+boolean plumber_equipTool(stat st, boolean forceEquipRightNow)
 {
 	if (!in_plumber()) return false;
 
 	boolean equipWithFallback(item to_equip, item fallback_to_equip)
 	{
-		if (possessEquipment(to_equip) && autoEquip(to_equip))
+		if (possessEquipment(to_equip))
 		{
-			return true;
+			if(forceEquipRightNow)
+			{
+				return autoForceEquip(to_equip);
+			}
+			else
+			{
+				return autoEquip(to_equip);
+			}
 		}
 		else if (possessEquipment(fallback_to_equip))
 		{
-			return autoEquip(fallback_to_equip);
+			if(forceEquipRightNow)
+			{
+				return autoForceEquip(fallback_to_equip);
+			}
+			else
+			{
+				return autoEquip(fallback_to_equip);
+			}
 		}
 		else if (item_amount($item[coin]) >= 20)
 		{
 			// 20 coins to avoid doing clever re-routing? Yes please!
 			retrieve_item(1, fallback_to_equip);
-			return autoEquip(fallback_to_equip);
+			if(forceEquipRightNow)
+			{
+				return autoForceEquip(fallback_to_equip);
+			}
+			else
+			{
+				return autoEquip(fallback_to_equip);
+			}
 		}
 		return false;
 	}
@@ -423,5 +444,65 @@ boolean plumber_equipTool(stat st)
 		case $stat[mysticality]: return equipWithFallback($item[bonfire flower], $item[[10462]fire flower]);
 		case $stat[moxie]: return equipWithFallback($item[fancy boots], $item[work boots]);
 	}
+	return false;
+}
+
+boolean plumber_equipTool(stat st)
+{
+	return plumber_equipTool(st,false);
+}
+
+boolean plumber_forceEquipTool()
+{
+	//just make sure a tool, any tool, is equipped
+	foreach it in $items[fancy boots,work boots,bonfire flower,[10462]fire flower,heavy hammer,hammer]
+	{
+		if(equipped_amount(it) > 0)
+		{
+			return true;
+		}
+	}
+	
+	//if not equip the moxie accessory as pre_adv does by default, but without waiting for maximizer to equip it
+	return plumber_equipTool($stat[moxie],true);
+}
+
+void plumber_eat_xp()
+{
+	//eat stuff for XP.
+	if(!in_plumber() || fullness_left() < 1)
+	{
+		return;
+	}
+	if(!prepare_food_xp_multi())
+	{
+		return;		//we are not prepared.
+	}
+	
+	//TODO diabolic pizza oven with pie man was not meant to eat
+	
+	item milk = $item[gallon of milk];
+	boolean got_milk = creatable_amount(milk) > 0 || item_amount(milk) > 0 || canPull(milk);
+	if(got_milk && fullness_left() >= 15)
+	{
+		acquireOrPull(milk);
+		autoEat(1, milk);
+	}
+}
+
+boolean LM_plumber()
+{
+	//this function is called early once every loop of doTasks() in autoscend.ash
+	//if something in this function returns true then it will restart the loop and get called again.
+	if(!in_plumber())
+	{
+		return false;
+	}
+	plumber_buyStuff();
+	if(my_level() < 13)
+	{
+		plumber_eat_xp();
+	}
+	
 	return false;
 }

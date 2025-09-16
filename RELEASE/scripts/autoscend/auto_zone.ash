@@ -7,7 +7,7 @@ boolean zone_unlock(location loc){
 	if(loc == $location[The Thinknerd Warehouse]){
 		unlocked = LX_unlockThinknerdWarehouse(false);
 	} else{
-		auto_log_debug("Dont know how to unlock " + loc);
+		auto_log_debug("Don't know how to unlock " + loc);
 		return false;
 	}
 
@@ -60,26 +60,31 @@ generic_t zone_needItem(location loc)
 	float value = 0.0;
 	switch(loc)
 	{
-	case $location[8-Bit Realm]:
-		value = 50.0;
+	case $location[Hero\'s Field]:
+		// bonus points cap at +400% item. Equivalent to a 20% item drop
+		value = 20.0;
 		break;
 	case $location[The Hole in the Sky]:
 		if (item_amount($item[Star]) < 8 || item_amount($item[Line]) < 7) {
 			value = 30.0;
 		}
 		break;
-	case $location[Frat House]:
-	case $location[Hippy Camp]:
+	case $location[The Orcish Frat House]:
+	case $location[The Hippy Camp]:
 			value = 5.0;
 		break;
 	case $location[Wartime Frat House]:
-		if (!possessOutfit("Frat Warrior Fatigues")) {
+		if (!possessOutfit("Frat Warrior Fatigues")
+		&& !is_wearing_outfit("War Hippy Fatigues")) {	//already in the other war outfit means only there to start the war
 			value = 5.0;
 		}
+		break;
 	case $location[Wartime Hippy Camp]:
-		if (!possessOutfit("War Hippy Fatigues")) {
+		if (!possessOutfit("War Hippy Fatigues")
+		&& !is_wearing_outfit("Frat Warrior Fatigues")) {	//already in the other war outfit means only there to start the war
 			value = 5.0;
 		}
+		break;
 	case $location[The Battlefield (Frat Uniform)]:
 	case $location[The Battlefield (Hippy Uniform)]:
 			value = 5.0;
@@ -90,13 +95,16 @@ generic_t zone_needItem(location loc)
 		value = 10.0;
 		break;
 	case $location[The Oasis]:
-		value = 30.0;
+		if(have_effect($effect[Ultrahydrated]) > 0)
+		{
+			value = 30.0;
+		}
 		break;
 	case $location[The Middle Chamber]:
 		value = 20.0;
 		break;
 	case $location[The Haunted Library]:
-		if (item_amount($item[killing jar]) < 1 && (get_property("gnasirProgress").to_int() & 4) == 0 && get_property("desertExploration") < 100) {
+		if (item_amount($item[killing jar]) < 1 && (get_property("gnasirProgress").to_int() & 4) == 0 && get_property("desertExploration").to_int() < 100) {
 			value = 10.0;
 		}
 		break;
@@ -112,7 +120,7 @@ generic_t zone_needItem(location loc)
 		}
 		break;
 	case $location[The Hidden Bowling Alley]:
-		if (item_amount($item[Bowling Ball]) == 0 && get_property("hiddenBowlingAlleyProgress") < 5) {
+		if (item_amount($item[Bowling Ball]) == 0 && get_property("hiddenBowlingAlleyProgress").to_int() < 5) {
 			value = 40.0;
 		}
 		break;
@@ -141,13 +149,15 @@ generic_t zone_needItem(location loc)
 		break;
 	case $location[The Copperhead Club]:
 	case $location[A Mob of Zeppelin Protesters]:
-		value = 15.0;
+		if(internalQuestStatus("questL11Ron") >= 1) {
+			value = 15.0;
+		}
 		break;
 	case $location[The Red Zeppelin]:
 		value = 30.0;
 		break;
 	case $location[The Penultimate Fantasy Airship]:
-		if(!possessEquipment($item[Amulet Of Extreme Plot Significance]) && !possessEquipment($item[Titanium Assault Umbrella]))
+		if(!possessEquipment($item[Amulet Of Extreme Plot Significance]))
 		{
 			value = 10.0;
 		}
@@ -163,7 +173,7 @@ generic_t zone_needItem(location loc)
 		value = 20.0;
 		break;
 	case $location[The Smut Orc Logging Camp]:
-		if(item_amount($item[Ten-Leaf Clover]) == 0)
+		if(get_property("chasmBridgeProgress").to_int() < bridgeGoal())
 		{
 			value = 10.0;
 		}
@@ -188,14 +198,33 @@ generic_t zone_needItem(location loc)
 			}
 		}
 		break;
+	case $location[The Valley of Rof L\'m Fao]:
+		if(item_amount($item[lowercase N]) == 0 && item_amount($item[ND]) == 0 && item_amount($item[Wand of Nagamar]) == 0 && get_property("auto_wandOfNagamar").to_boolean())
+		{
+			value = 30.0;
+		}
 	case $location[Itznotyerzitz Mine]:
-		if (!possessOutfit("Mining Gear") && item_amount($item[Ten-Leaf Clover]) == 0)
+		if (!possessOutfit("Mining Gear") && cloversAvailable() == 0)
 		{
 			value = 10.0;
 		}
 		break;
 	case $location[The Goatlet]:
-		value = 40.0;
+		boolean getMilk = (have_skill($skill[Advanced Saucecrafting]) || (my_class() == $class[Sauceror] && (guild_available() || !get_property('auto_skipUnlockGuild').to_boolean()))) && fullness_limit() != 0;
+		int milksPerMilk = (my_class() == $class[Sauceror]) ? 3 : 1;
+		int milkUsed = (get_property("_milkOfMagnesiumUsed").to_boolean() || fullness_left() == 0) ? 1 : 0;
+		if((item_amount($item[Milk Of Magnesium]) + milksPerMilk * item_amount($item[Glass Of Goat\'s Milk]) + milkUsed) >= 3)
+		{	
+			getMilk = false;
+		}
+		if(getMilk)
+		{
+			value = 20.0;
+		}
+		else
+		{
+			value = 40.0;
+		}
 		break;
 	case $location[The Extreme Slope]:
 		if(!possessOutfit("eXtreme Cold-Weather Gear"))
@@ -204,9 +233,18 @@ generic_t zone_needItem(location loc)
 		}
 	case $location[The Defiled Nook]:
 		// Handle for a gravy boat?
-		if(get_property("cyrptNookEvilness").to_int() > 26)
+		if(get_property("cyrptNookEvilness").to_int() > 14)
 		{
 			value = 20.0;
+		}
+		break;
+	case $location[The Dark Neck of the Woods]:
+	case $location[The Dark Heart of the Woods]:
+	case $location[The Dark Elbow of the Woods]:
+	case $location[Pandamonium Slums]:
+		if(LX_doingPirates() && item_amount($item[hot wing]) < 3 && internalQuestStatus("questM12Pirate") <= 2)
+		{
+			value = 30;
 		}
 		break;
 	case $location[Cobb\'s Knob Barracks]:
@@ -272,6 +310,10 @@ generic_t zone_needItem(location loc)
 			}
 		}
 		break;
+	case $location[The Obligatory Pirate\'s Cove]:
+		if(!possessOutfit("Swashbuckling Getup") && !possessEquipment($item[pirate fledges])) {
+			value = 10.0;
+		}
 	case $location[The Old Landfill]:
 		value = 5.0 * (1.0 + get_property("auto_junkspritesencountered").to_float());
 		break;
@@ -288,22 +330,77 @@ generic_t zone_needItem(location loc)
 		}
 		break;
 	case $location[The Haunted Pantry]:
-		if((auto_my_path() == "Community Service") && (item_amount($item[Tomato]) < 2) && have_skill($skill[Advanced Saucecrafting]))
-		{
-			retval._float = 59.4;
-		}
 		break;
 	case $location[The Skeleton Store]:
-		if((auto_my_path() == "Community Service") && have_skill($skill[Advanced Saucecrafting]) && ((item_amount($item[Cherry]) < 1) || (item_amount($item[Grapefruit]) < 1) || (item_amount($item[Lemon]) < 1)))
-		{	//No idea, should spade this for great justice.
-			retval._float = 33.0;
-		}
 		break;
 	case $location[The Secret Government Laboratory]:
-		if((auto_my_path() == "Community Service") && (item_amount($item[Experimental Serum G-9]) < 2))
-		{	//No idea, assume it is low.
-			retval._float = 10.0;
+		break;
+	// Bugbear Invasion Locations
+	case $location[Waste Processing]:
+		if (!possessEquipment($item[bugbear communicator badge]))
+		{
+			retval._float = 20.0;
 		}
+		break;
+	case $location[Science Lab]:
+		retval._float = 30.0;
+		break;
+	case $location[Engineering]:
+		retval._float = 50.0;
+		break;
+	// End Bugbear Invasion Locations
+	// A Shrunken Adventurer Am I (Small) Locations
+	case $location[Fight in the Dirt]:
+		value = 50.0;
+		break;
+	case $location[Fight in the Tall Grass]:
+		value = 50.0;
+		break;
+	case $location[Fight in the Very Tall Grass]:
+		value = 50.0;
+		break;
+	// End A Shrunken Adventurer Am I (Small) Locations
+	// Shadow Rifts via cursed payphone or AoSOL path
+	case $location[Shadow Rift (The Ancient Buried Pyramid)]:
+	case $location[Shadow Rift (The Hidden City)]:
+	case $location[Shadow Rift (The Misspelled Cemetary)]:
+		value = 10.0;
+		break;
+	// End Shadow Rifts
+	default:
+		retval._error = true;
+		break;
+	}
+
+	if(expectGhostReport() && (loc == get_property("ghostLocation").to_location()) && (get_property("questPAGhost") == "started"))
+	{
+		value = 0.0;
+	}
+
+
+	if(value != 0.0)
+	{
+		retval._boolean = true;
+		retval._float = 10000.0/value;
+
+		if(in_lar())
+		{
+			retval._float = 5000.0/value;
+		}
+		retval._float -= 100.0;
+	}
+	return retval;
+}
+
+generic_t zone_needItemBooze(location loc)
+{
+	// these matching a location case in zone_needItem will be called if the general item bonus could not be reached
+	generic_t retval;
+	float value = 0.0;
+	switch(loc)
+	{
+	case $location[The Haunted Wine Cellar]:
+		value = 5.0 * (1.0 + get_property("auto_wineracksencountered").to_float());
 		break;
 	default:
 		retval._error = true;
@@ -321,7 +418,83 @@ generic_t zone_needItem(location loc)
 		retval._boolean = true;
 		retval._float = 10000.0/value;
 
-		if(auto_my_path() == "Live. Ascend. Repeat.")
+		if(in_lar())
+		{
+			retval._float = 5000.0/value;
+		}
+		retval._float -= 100.0;
+	}
+	return retval;
+}
+
+generic_t zone_needItemFood(location loc)
+{
+	// these matching a location case in zone_needItem will be called if the general item bonus could not be reached
+	generic_t retval;
+	float value = 0.0;
+	switch(loc)
+	{
+	case $location[The Haunted Laundry Room]:
+		value = 5.0 * (1.0 + get_property("auto_cabinetsencountered").to_float());
+		break;
+	case $location[Inside the Palindome]:
+		if (item_amount($item[Stunt Nuts]) == 0 && item_amount($item[Wet Stunt Nut Stew]) == 0) {
+			value = 30.0;
+		}
+		break;
+	case $location[Whitey\'s Grove]:
+		if(((item_amount($item[Lion Oil]) == 0) || (item_amount($item[Bird Rib]) == 0)) && (item_amount($item[Wet Stew]) == 0) && (item_amount($item[Wet Stunt Nut Stew]) == 0) && (internalQuestStatus("questL11Palindome") < 5))
+		{
+			value = 25.0;
+		}
+		break;
+	case $location[The Goatlet]:
+		boolean getMilk = (have_skill($skill[Advanced Saucecrafting]) || (my_class() == $class[Sauceror] && (guild_available() || !get_property('auto_skipUnlockGuild').to_boolean()))) && fullness_limit() != 0;
+		int milksPerMilk = (my_class() == $class[Sauceror]) ? 3 : 1;
+		int milkUsed = (get_property("_milkOfMagnesiumUsed").to_boolean() || fullness_left() == 0) ? 1 : 0;
+		if((item_amount($item[Milk Of Magnesium]) + milksPerMilk * item_amount($item[Glass Of Goat\'s Milk]) + milkUsed) >= 3)
+		{	
+			getMilk = false;
+		}
+		if(getMilk)
+		{
+			value = 20.0;
+		}
+		else
+		{
+			value = 40.0;
+		}
+		break;
+	case $location[The Dark Neck of the Woods]:
+	case $location[The Dark Heart of the Woods]:
+	case $location[The Dark Elbow of the Woods]:
+	case $location[Pandamonium Slums]:
+		if(LX_doingPirates() && item_amount($item[hot wing]) < 3 && internalQuestStatus("questM12Pirate") <= 2)
+		{
+			value = 30;
+		}
+		break;
+	case $location[The Haunted Pantry]:
+		break;
+	case $location[The Skeleton Store]:
+		break;
+	default:
+		retval._error = true;
+		break;
+	}
+
+	if(expectGhostReport() && (loc == get_property("ghostLocation").to_location()) && (get_property("questPAGhost") == "started"))
+	{
+		value = 0.0;
+	}
+
+
+	if(value != 0.0)
+	{
+		retval._boolean = true;
+		retval._float = 10000.0/value;
+
+		if(in_lar())
 		{
 			retval._float = 5000.0/value;
 		}
@@ -339,8 +512,8 @@ generic_t zone_combatMod(location loc)
 	int value = 0;
 	switch(loc)
 	{
-	case $location[Frat House]:
-	case $location[Hippy Camp]:
+	case $location[The Orcish Frat House]:
+	case $location[The Hippy Camp]:
 		if (my_level() >= 9) {
 			value = -85;
 		}
@@ -350,6 +523,20 @@ generic_t zone_combatMod(location loc)
 		value = -80;
 		break;
 	case $location[Sonofa Beach]:
+		//when wanderer replacing strategy is about to be used, combat modifier is useless. these are the replaced wanderers
+		if(auto_voteMonster())
+		{	foreach sl in $slots[acc3,acc2,acc1]
+			{	if(get_property("_auto_maximize_equip_" + sl.to_string()) == to_string($item[&quot;I voted!&quot; sticker]))
+				{	value = 0;
+					break;
+				}
+			}
+		}
+		if(auto_sausageGoblin() && get_property("_auto_maximize_equip_off-hand") == to_string($item[Kramco Sausage-o-Matic&trade;]))
+		{	value = 0;
+			break;
+		}
+		//otherwise if no wanderer replace
 		value = 90;
 		break;
 	case $location[The Upper Chamber]:
@@ -357,9 +544,6 @@ generic_t zone_combatMod(location loc)
 		break;
 	case $location[The Haunted Billiards Room]:
 		value = -85;
-		break;
-	case $location[The Haunted Library]:
-		value = 25;
 		break;
 	case $location[The Haunted Gallery]:
 		if((delay._int == 0) || (!contains_text(get_property("relayCounters"), "Garden Banished")))
@@ -388,7 +572,9 @@ generic_t zone_combatMod(location loc)
 		}
 		break;
 	case $location[A Mob Of Zeppelin Protesters]:
-		value = -70;
+		if(internalQuestStatus("questL11Ron") >= 1) {
+			value = -70;
+		}
 		break;
 	case $location[The Black Forest]:
 		if (internalQuestStatus("questL13Final") < 6) {
@@ -414,9 +600,14 @@ generic_t zone_combatMod(location loc)
 		}
 		break;
 	case $location[The Penultimate Fantasy Airship]:
-		if(delay._int == 0)
+		if(delay._int == 0 || (auto_haveBatWings() && available_amount($item[S.O.C.K.])==0))
 		{
 			value = -80;
+		}
+		else if (in_bugbear() && bugbear_BioDataRemaining($location[Engineering]) > 0)
+		{
+			// When hunting bugbears, we want normal combats, not NC combats
+			value = 10;
 		}
 		else
 		{
@@ -436,12 +627,15 @@ generic_t zone_combatMod(location loc)
 		value = -95;
 		break;
 	case $location[Itznotyerzitz Mine]:
-		if (!possessOutfit("Mining Gear") && item_amount($item[Ten-Leaf Clover]) == 0) {
+		if (!possessOutfit("Mining Gear") && cloversAvailable() == 0) {
 			value = -90;
 		}
 		break;
 	case $location[Lair of the Ninja Snowmen]:
-		value = 80;
+		if(internalQuestStatus("questL08Trapper") < 3 && !L8_forceExtremeInstead() && item_amount($item[Ninja Carabiner]) == 0)
+		{
+			value = 80;
+		}
 		break;
 	case $location[The Dark Neck of the Woods]:
 	case $location[The Dark Heart of the Woods]:
@@ -452,13 +646,10 @@ generic_t zone_combatMod(location loc)
 	case $location[The Defiled Alcove]:
 		value = -85;
 		break;
-	case $location[The Outskirts of Cobb's Knob]:
-		value = 20;
-		break;
 	case $location[The Typical Tavern Cellar]:
 		//We could cut it off early if the Rat Faucet is the last one
 		//And marginally if we know the 3rd/6th square are forced events.
-		value = -75;
+		//actual desired value for combat or non combat is decided by level_03.ash based on elemental damage bonus
 		break;
 	case $location[The Spooky Forest]:
 		if(delay._int == 0)
@@ -494,7 +685,11 @@ generic_t zone_combatMod(location loc)
 		break;
 	case $location[The Obligatory Pirate\'s Cove]:
 		if(!possessOutfit("Swashbuckling Getup")) {
-			value = -60;
+			if(item_amount($item[The Big Book Of Pirate Insults]) > 0 && numPirateInsults() < 3) {
+				value = 0; // fights can give both outfit pieces and insults. better not start avoiding fights until first insults learned
+			} else {
+				value = -60;
+			}
 		} else if (numPirateInsults() < 8) {
 			value = 40;
 		}
@@ -514,7 +709,7 @@ generic_t zone_combatMod(location loc)
 	case $location[The Haunted Pantry]:
 		value = 20;
 		break;
-	case $location[Cobb's Knob Treasury]:
+	case $location[Cobb\'s Knob Treasury]:
 		value = 15;
 		break;
 	case $location[The VERY Unquiet Garves]:
@@ -534,12 +729,23 @@ generic_t zone_combatMod(location loc)
 	case $location[The Ice Hotel]:
 		value = -85;
 		break;
+	// Bugbear Invasion Locations
+	case $location[Sonar]:
+		value = -70;
+		break;
+	case $location[Morgue]:
+		if (item_amount($item[bugbear autopsy tweezers]) > 0)
+		{
+			value = -70;
+		}
+		break;
+	// End Bugbear Invasion Locations
 	default:
 		retval._error = true;
 		break;
 	}
 
-	if(auto_my_path() == "Live. Ascend. Repeat.")
+	if(in_lar())
 	{
 		value = 0;
 	}
@@ -595,19 +801,19 @@ generic_t zone_delay(location loc)
 		break;
 	case $location[The Hidden Apartment Building]:
 		if (internalQuestStatus("questL11Curses") < 2) {
-			if (loc.turns_spent == 0) {
-				value = 8;
+			if (loc.turns_spent < 9) {
+				value = 8 - loc.turns_spent;
 			} else {
-				value = loc.turns_spent % 8;
+				value = 7 - (loc.turns_spent - 9) % 8;
 			}
 		}
 		break;
 	case $location[The Hidden Office Building]:
 		if (internalQuestStatus("questL11Business") < 2) {
-			if (loc.turns_spent == 0) {
-				value = 5;
+			if (loc.turns_spent < 6) {
+				value = 5 - loc.turns_spent;
 			} else {
-				value = loc.turns_spent % 5;
+				value = 4 - (loc.turns_spent - 6) % 5;
 			}
 		}
 		break;
@@ -653,19 +859,19 @@ generic_t zone_delay(location loc)
 		value = 10 - loc.turns_spent;
 		break;
 	case $location[The Haunted Pantry]:
-		if (isGuildClass() && my_primestat() == $stat[mysticality])
+		if (isGuildClass() && my_primestat() == $stat[mysticality] && !get_property('auto_skipUnlockGuild').to_boolean())
 		{
 			value = 5 - loc.turns_spent;
 		}
 		break;
 	case $location[The Sleazy Back Alley]:
-		if (isGuildClass() && my_primestat() == $stat[moxie])
+		if (isGuildClass() && my_primestat() == $stat[moxie] && !get_property('auto_skipUnlockGuild').to_boolean())
 		{
 			value = 5 - loc.turns_spent;
 		}
 		break;
 	case $location[The Smut Orc Logging Camp]:
-		if (shenZones contains loc && get_property("chasmBridgeProgress").to_int() >= 30)
+		if (shenZones contains loc && get_property("chasmBridgeProgress").to_int() >= bridgeGoal())
 		{
 			value = 3 - (loc.turns_spent - shenZones[loc]);
 		}
@@ -698,6 +904,30 @@ generic_t zone_delay(location loc)
 		if(kolhs_mandatorySchool())		//KOLHS path specific delay locations
 		{
 			value = 40 - get_property("_kolhsAdventures").to_int();		//shared counter of 40 adv between all 4 zones
+		}
+		break;
+	case $location[Vanya\'s Castle]:
+		if (need8BitPoints() && possessEquipment($item[Continuum Transfunctioner]) && (get_property("8BitColor") == "black" || get_property("8BitColor") == ""))
+		{
+			value = 5 - get_property("8BitBonusTurns").to_int();
+		}
+		break;
+	case $location[The Fungus Plains]:
+		if (need8BitPoints() && possessEquipment($item[Continuum Transfunctioner]) && get_property("8BitColor") == "red")
+		{
+			value = 5 - get_property("8BitBonusTurns").to_int();
+		}
+		break;
+	case $location[Megalo-City]:
+		if (need8BitPoints() && possessEquipment($item[Continuum Transfunctioner]) && get_property("8BitColor") == "blue")
+		{
+			value = 5 - get_property("8BitBonusTurns").to_int();
+		}
+		break;
+	case $location[Hero\'s Field]:
+		if (need8BitPoints() && possessEquipment($item[Continuum Transfunctioner]) && get_property("8BitColor") == "green")
+		{
+			value = 5 - get_property("8BitBonusTurns").to_int();
 		}
 		break;
 	default:
@@ -742,7 +972,7 @@ boolean zone_available(location loc)
 		}
 		break;
 	case $location[Super Villain\'s Lair]:
-		if((auto_my_path() == "License to Adventure") && (get_property("_villainLairProgress").to_int() < 999) && (get_property("_auto_bondBriefing") == "started"))
+		if(in_lta() && (get_property("_villainLairProgress").to_int() < 999) && (get_property("_auto_bondBriefing") == "started"))
 		{
 			retval = true;
 		}
@@ -906,7 +1136,10 @@ boolean zone_available(location loc)
 			retval = true;
 		}
 		break;
-	case $location[8-Bit Realm]:
+	case $location[Vanya\'s Castle]:
+	case $location[The Fungus Plains]:
+	case $location[Megalo-City]:
+	case $location[Hero\'s Field]:
 		if(possessEquipment($item[Continuum Transfunctioner]) && ((internalQuestStatus("questL02Larva") >= 0) || (internalQuestStatus("questG02Whitecastle") >= 0)))
 		{
 			retval = true;
@@ -1060,6 +1293,31 @@ boolean zone_available(location loc)
 	case $location[Twin Peak]:
 	case $location[Oil Peak]:
 		if(internalQuestStatus("questL09Topping") >= 1)
+		{
+			retval = true;
+		}
+		break;
+	case $location[The Orcish Frat House]:
+	case $location[The Hippy Camp]:
+		if(get_property("lastIslandUnlock").to_int() == my_ascensions())
+		{
+			retval = true;
+		}
+		break;
+	case $location[The Orcish Frat House (In Disguise)]:
+		if(get_property("lastIslandUnlock").to_int() == my_ascensions() && 
+		have_outfit("Frat Boy Ensemble") &&
+		internalQuestStatus("questL12War") != 0 &&	//mafia always calls location Wartime with L12 quest
+		internalQuestStatus("questL12War") != 1)	//mafia always calls location Wartime with L12 quest
+		{
+			retval = true;
+		}
+		break;
+	case $location[The Hippy Camp (In Disguise)]:
+		if(get_property("lastIslandUnlock").to_int() == my_ascensions() && 
+		have_outfit("Filthy Hippy Disguise") &&
+		internalQuestStatus("questL12War") != 0 &&	//mafia always calls location Wartime with L12 quest
+		internalQuestStatus("questL12War") != 1)	//mafia always calls location Wartime with L12 quest
 		{
 			retval = true;
 		}
@@ -1236,6 +1494,43 @@ boolean zone_available(location loc)
 			retval = true;
 		}
 		break;
+
+	case $location[Tower Level 1]:
+		if(get_property("questL13Final") == "step6")
+		{
+			retval = true;
+		}
+		break;
+	case $location[Tower Level 2]:
+		if(get_property("questL13Final") == "step7")
+		{
+			retval = true;
+		}
+		break;
+	case $location[Tower Level 3]:
+		if(get_property("questL13Final") == "step8")
+		{
+			retval = true;
+		}
+		break;
+	case $location[Tower Level 4]:
+		if(get_property("questL13Final") == "step9")
+		{
+			retval = true;
+		}
+		break;
+	case $location[Tower Level 5]:
+		if(get_property("questL13Final") == "step10")
+		{
+			retval = true;
+		}
+		break;
+	case $location[The Naughty Sorceress\' Chamber]:
+		if(get_property("questL13Final") == "step11")
+		{
+			retval = true;
+		}
+		break;
 	case $location[Barf Mountain]:
 	case $location[Pirates of the Garbage Barges]:
 	case $location[Uncle Gator\'s Country Fun-Time Liquid Waste Sluice]:
@@ -1272,6 +1567,22 @@ boolean zone_available(location loc)
 
 	case $location[The Old Landfill]:
 		if(internalQuestStatus("questM19Hippy") >= 0)
+		{
+			retval = true;
+		}
+		break;
+
+	case $location[Cobb\'s Knob Laboratory]:
+	case $location[The Knob Shaft]:
+		if (item_amount($item[Cobb\'s Knob Lab Key]) > 0)
+		{
+			retval = true;
+		}
+		break;
+	case $location[Cobb\'s Knob Menagerie, Level 1]:
+	case $location[Cobb\'s Knob Menagerie, Level 2]:
+	case $location[Cobb\'s Knob Menagerie, Level 3]:
+		if (item_amount($item[Cobb\'s Knob Menagerie key]) > 0)
 		{
 			retval = true;
 		}
@@ -1378,10 +1689,10 @@ boolean zone_available(location loc)
 		break;
 	}
 
-	// compare our result with canadv(https://svn.code.sf.net/p/therazekolmafia/canadv/code/), log a warning if theres a difference. Ideally we can see if there are any differences between our code and Bales, and if not remove all of ours in favor of the dependency
-	boolean canAdvRetval = can_adv(loc);
+	// compare our result with Mafia's native function, log a warning if theres a difference. Ideally we can see if there are any differences between our code and Mafia's, and if not remove all of ours in favor of Mafia's
+	boolean canAdvRetval = can_adventure(loc);
 	if(canAdvRetval != retval){
-		auto_log_debug("Uh oh, autoscend and canadv dont agree on whether we can adventure at " + loc + " (autoscend: "+retval+", canadv: "+canAdvRetval+"). Will assume locaiton available if either is true.");
+		auto_log_debug("Uh oh, autoscend and mafia's can_adventure() dont agree on whether we can adventure at " + loc + " (autoscend: "+retval+", can_adventure(): "+canAdvRetval+"). Will assume location available if either is true.");
 		retval = retval || canAdvRetval;
 	}
 
@@ -1489,8 +1800,6 @@ generic_t zone_difficulty(location loc)
 	case $location[The Spooky Forest]:
 		break;
 	case $location[The Hidden Temple]:
-		break;
-	case $location[8-Bit Realm]:
 		break;
 	case $location[The Black Forest]:
 		break;
@@ -1675,6 +1984,28 @@ generic_t zone_difficulty(location loc)
 	return retval;
 }
 
+boolean zone_hasLuckyAdventure(location loc)
+{
+	if ($locations[Vanya's Castle, The Fungus Plains, Megalo-City, Hero's Field, A Maze of Sewer Tunnels,A Mob of Zeppelin Protesters,A-Boo Peak,An Octopus's Garden,Art Class,
+	Cola Wars Battlefield (Cloaca Uniform),Cola Wars Battlefield (Dyspepsi Uniform), The Cola Wars Battlefield, Burnbarrel Blvd.,Camp Logging Camp,Chemistry Class,
+	Cobb's Knob Barracks,Cobb's Knob Harem,Cobb's Knob Kitchens,Cobb's Knob Laboratory,Cobb's Knob Menagerie\, Level 2,Cobb's Knob Treasury,
+	Elf Alley,Exposure Esplanade,The Orcish Frat House,The Orcish Frat House (In Disguise),Guano Junction,The Hippy Camp,The Hippy Camp (In Disguise),Itznotyerzitz Mine,
+	Lair of the Ninja Snowmen,Lemon Party,Madness Reef,Oil Peak,Outskirts of Camp Logging Camp,Pandamonium Slums,Shop Class,South of the Border,
+	The "Fun" House,The Ancient Hobo Burial Ground,The Batrat and Ratbat Burrow,The Black Forest,The Brinier Deepers,The Briny Deeps,The Bugbear Pen,
+	The Castle in the Clouds in the Sky (Basement),The Castle in the Clouds in the Sky (Ground Floor),The Castle in the Clouds in the Sky (Top Floor),
+	The Copperhead Club,The Dark Elbow of the Woods,The Dark Heart of the Woods,The Dark Neck of the Woods,The Dive Bar,The Goatlet,The Hallowed Halls,
+	The Haunted Ballroom,The Haunted Billiards Room,The Haunted Boiler Room,The Haunted Conservatory,The Haunted Gallery,The Haunted Kitchen,
+	The Haunted Library,The Haunted Pantry,The Haunted Storage Room,The Heap,The Hidden Park,The Hidden Temple,The Icy Peak,The Knob Shaft,
+	The Limerick Dungeon,The Mer-Kin Outpost,The Oasis,The Obligatory Pirate's Cove,The Outskirts of Cobb's Knob,The Poker Room,The Primordial Soup,
+	The Purple Light District,The Red Zeppelin,The Roulette Tables,The Sleazy Back Alley,The Smut Orc Logging Camp,The Spectral Pickle Factory,
+	The Spooky Forest,The Spooky Gravy Burrow,The Unquiet Garves,The VERY Unquiet Garves,The Valley of Rof L'm Fao,The Wreck of the Edgar Fitzsimmons,
+	Thugnderdome,Tower Ruins,Twin Peak,Vanya's Castle Chapel,Whitey's Grove,Ye Olde Medievale Villagee] contains loc)
+	{
+		return true;
+	}
+	return false;
+}
+
 location[int] zones_available()
 {
 	location[int] retval;
@@ -1752,18 +2083,88 @@ item[int] hugpocket_available()
 
 boolean is_ghost_in_zone(location loc)
 {
-	foreach idx, mob in get_monsters(loc)
+	//special location handling
+	int totalTurnsSpent;
+	int delayForNextNoncombat;
+	if(have_effect($effect[Lucky!]) > 0)
 	{
-		if (mob.physical_resistance >= 80)
-		{
-			return true;
-		}
+		return false;		//we are grabbing a Lucky! so we will not encounter a ghost unless it is a wandering monster
 	}
-
-	// Special-case for King Boo.
-	if (in_plumber() && loc == $location[Summoning Chamber])
+	switch(loc)
 	{
+	case $location[A-Boo Peak]:
+		if(get_property("booPeakProgress").to_int() == 0 && !get_property("booPeakLit").to_boolean())
+		{
+			//forced noncombat of lighting the peak
+			return false;
+		}
+		if(get_property("auto_aboopending").to_int() != 0)	//internal tracking by autoscend
+		{
+			//our next visit to the peak will be The Horror NC adventure
+			return false;
+		}
 		return true;
+		
+	case $location[the haunted gallery]:
+		//special case for [ghost of Elizabeth Spookyraven] which only appears in [the haunted gallery] at the culmination of lights out quest
+		//TODO implement doing the quest and then return true when the quest is at the right stage for her to appear
+		return false;
+		
+	case $location[Summoning Chamber]:
+		//special case for King Boo
+		return in_plumber();
+		
+	case $location[The Hidden Hospital]:
+		//if liana cleared then we can encounter ghost
+		return get_property("hiddenHospitalProgress").to_int() > 0 && get_property("hiddenHospitalProgress").to_int() < 7;
+		
+	case $location[The Hidden Office Building]:
+		boolean hasMcCluskyFile = $item[McClusky file (complete)].available_amount() > 0;
+		totalTurnsSpent = $location[the hidden office building].turns_spent;
+		delayForNextNoncombat = 4 - (totalTurnsSpent - 1) % 5;
+		if(auto_haveQueuedForcedNonCombat())
+		{
+			delayForNextNoncombat = 0;
+		}
+		return hasMcCluskyFile && delayForNextNoncombat == 0;
+		
+	case $location[The Hidden Apartment Building]:
+		boolean cursed = have_effect($effect[Thrice-Cursed]) > 0;
+		totalTurnsSpent = $location[the hidden apartment building].turns_spent;
+		delayForNextNoncombat = 7 - (totalTurnsSpent - 9) % 8;
+		if(totalTurnsSpent < 9)
+		{
+			delayForNextNoncombat = 8 - totalTurnsSpent;
+		}
+		if(auto_haveQueuedForcedNonCombat())
+		{
+			delayForNextNoncombat = 0;
+		}
+		return cursed && delayForNextNoncombat == 0;
+		
+	case $location[The Hidden Bowling Alley]:
+		//if tracker is 6 we used just the right amount of bowling bowls
+		return get_property("hiddenBowlingAlleyProgress").to_int() == 6 && $item[bowling ball].available_amount() > 0;
+		
+	case $location[a massive ziggurat]:
+		//massive ziggurat
+		if(in_robot())
+		{
+			return false;		//[Protector_S._P._E._C._T._R._E.] has 0 phys res and 100% all element res
+		}
+		return $location[a massive Ziggurat].liana_cleared() && $item[stone triangle].available_amount() == 4;
+		
+	default:
+		//for all other zones
+		float [monster] apprates = auto_combat_appearance_rates(loc, true);
+		foreach idx, mob in get_monsters(loc)
+		{
+			if(apprates[mob] <= 0) continue; //won't show up because banished or req's not fulfilled
+			if (mob.physical_resistance >= 80)
+			{
+				return true;
+			}
+		}
 	}
 
 	return false;
@@ -1781,6 +2182,11 @@ boolean[location] monster_to_location(monster target)
 		}
 	}
 	return retval;
+}
+
+boolean[location] auto_swoopLocations()
+{
+	return $locations[The Hatching Chamber, The Feeding Chamber, The Royal Guard Chamber, The Hidden Temple, The Goatlet];
 }
 
 
@@ -1819,7 +2225,6 @@ boolean[location] monster_to_location(monster target)
 	case $location[The Typical Tavern Cellar]:
 	case $location[The Spooky Forest]:
 	case $location[The Hidden Temple]:
-	case $location[8-Bit Realm]:
 	case $location[The Black Forest]:
 	case $location[The Beanbat Chamber]:
 	case $location[The Bat Hole Entrance]:

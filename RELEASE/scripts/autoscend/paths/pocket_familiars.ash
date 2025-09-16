@@ -1,7 +1,7 @@
 // This uses Ezandora's wonderful Helix Fossil script to handle building a team and combat.
 boolean in_pokefam()
 {
-	return auto_my_path() == "Pocket Familiars";
+	return my_path() == $path[Pocket Familiars];
 }
 
 void pokefam_initializeSettings()
@@ -12,11 +12,12 @@ void pokefam_initializeSettings()
 		set_property("auto_ignoreRestoreFailure", true);
 		// No need for a beehive as combat is different.
 		set_property("auto_getBeehive", false);
-		// We can't flyer, so better to do the war as a hippy.
-		set_property("auto_hippyInstead", true);
+		// We can't flyer, but all the sidequests are unlocked, so we can still war as frat
 		set_property("auto_ignoreFlyer", true);
 		// No Naughty Sorceress so no need for a wand.
 		set_property("auto_wandOfNagamar", false);
+		// runs are probably going to take at least 3 days, maybe 4 in hardcore
+		set_property("auto_runDayCount", 3);
 	}
 }
 
@@ -31,12 +32,30 @@ string pokefam_defaultMaximizeStatement()
 	return res;
 }
 
+void pokefam_getHats()
+{
+	if (!in_pokefam()) {
+		return;
+	}
+	visit_url("shop.php?whichshop=pokefam");
+	if (item_amount($item[1,960 pok&eacute;dollar bill]) < 50) {
+		return;
+	}
+	foreach it in $items[Team Avarice cap, Team Sloth cap, Team Wrath cap, Mu cap]
+	{
+		if(!possessEquipment(it) && item_amount($item[1,960 pok&eacute;dollar bill]) >= 50)
+		{
+			retrieve_item(1, it);
+		}
+	}
+}
+
 boolean pokefam_makeTeam()
 {
 	if(in_pokefam())
 	{
 		// Choose "strongest 2" in order to allow a middle spot for a pocket familiar to level up and earn pokebucks.
-		if(svn_info("Ezandora-Helix-Fossil-branches-Release").revision > 0)
+		if(git_exists("Ezandora-Helix-Fossil"))
 		{
 		auto_log_info("Setting our team via Ezandora:", "green");
 		boolean ignore = cli_execute("PocketFamiliarsAutoSelect Strongest 2;");

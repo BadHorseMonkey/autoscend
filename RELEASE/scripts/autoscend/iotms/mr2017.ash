@@ -1,6 +1,5 @@
 #	This is meant for items that have a date of 2017.
 
-// This should probably only be called directly from community_service.ash.
 boolean auto_hasMummingTrunk()
 {
 	if(!pathHasFamiliar()  || item_amount($item[Mumming Trunk]) == 0 || !auto_is_valid($item[Mumming Trunk]))
@@ -127,12 +126,6 @@ boolean mummifyFamiliar(familiar fam)
 
 boolean mummifyFamiliar()
 {
-	auto_hasMummingTrunk();
-	if (my_path() == "Community Service")
-	{
-		return false;
-	}
-	
 	return mummifyFamiliar(my_familiar());
 }
 
@@ -307,9 +300,13 @@ boolean loveTunnelAcquire(boolean enforcer, stat statItem, boolean engineer, int
 	{
 		loveEffect = 3;
 	}
-	if((auto_my_path() == "Actually Ed the Undying") && ((my_mp() < 20) || (my_turncount() < 10)))
+	if(isActuallyEd() && ((my_mp() < 20) || (my_turncount() < 10)))
 	{
 		return false;
+	}
+	if((in_wereprof() && turns_played() < 50) || is_professor())
+	{
+		return false; //don't try LOV Tunnel if haven't retransformed back to werewolf or is a professor in WereProf
 	}
 
 	string temp = visit_url("place.php?whichplace=town_wrong");
@@ -332,7 +329,7 @@ boolean loveTunnelAcquire(boolean enforcer, stat statItem, boolean engineer, int
 	int statValue = 4;
 	if(statItem == $stat[none])
 	{
-		if (my_class() == $class[Vampyre] && possessEquipment($item[Vampyric Cloake]))
+		if(in_darkGyffte() && possessEquipment($item[Vampyric Cloake]))
 		{
 			statItem = $stat[Muscle];
 		}
@@ -350,14 +347,19 @@ boolean loveTunnelAcquire(boolean enforcer, stat statItem, boolean engineer, int
 
 	if(!have_skill($skill[Torso Awareness]) && !have_skill($skill[Best Dressed]) && (statValue == 1))
 	{
-		if(possessEquipment($item[Protonic Accelerator Pack]) || possessEquipment($item[Vampyric Cloake]))
-		{
-			statValue = 3;
-		}
-		else
+		if(!(possessEquipment($item[Protonic Accelerator Pack]) || possessEquipment($item[Vampyric Cloake])) && auto_is_valid($item[LOV Epaulettes]))
 		{
 			statValue = 2;
 		}
+		else
+		{
+			statValue = 3;
+		}
+	}
+
+	if(!auto_is_valid($item[LOV Epaulettes]) && (statValue == 2))  // if myst and in G-Lover
+	{
+		statValue = 3; // Resistance and Meat seems better than ML
 	}
 
 	backupSetting("choiceAdventure1224", to_string(statValue)); // L.O.V. Equipment Room
@@ -375,6 +377,11 @@ boolean loveTunnelAcquire(boolean enforcer, stat statItem, boolean engineer, int
 		backupSetting("choiceAdventure1225", "2"); // L.O.V. Engine Room - Skip Engineer
 	}
 
+	if(in_glover())
+	{
+		loveEffect = 3; // Item drops seems better than familiar weight
+	}
+
 	backupSetting("choiceAdventure1226", to_string(loveEffect)); // L.O.V. Emergency Room
 	#1	Lovebotamy					+10 stats per fight
 	#2	Open Heart Surgery			+10 familiar weight (50 adventures)
@@ -388,6 +395,11 @@ boolean loveTunnelAcquire(boolean enforcer, stat statItem, boolean engineer, int
 	else
 	{
 		backupSetting("choiceAdventure1227", "2"); // L.O.V. Elbow Room - Skip Equivocator
+	}
+
+	if(in_glover())
+	{
+		giftItem = 1; // Only item G-Lover can use
 	}
 
 	backupSetting("choiceAdventure1228", to_string(giftItem));
@@ -811,7 +823,7 @@ boolean kgb_getMartini(string page, boolean dontCare)
 	{
 		if(!dontCare)
 		{
-			auto_log_info("We did not initialize the briefcase this ascension, we can not care", "red");
+			auto_log_info("We did not initialize the briefcase this ascension, we do not care", "red");
 			dontCare = true;
 		}
 	}
@@ -901,7 +913,7 @@ boolean kgb_getMartini(string page, boolean dontCare)
 			{
 				if(button == 0)
 				{
-					abort("Can not seem to recover situation regarding splendid martinis");
+					abort("Cannot seem to recover situation regarding splendid martinis");
 				}
 				auto_log_info("Trying to restore tabs", "green");
 				continue;
@@ -1145,7 +1157,7 @@ boolean getSpaceJelly()
 	{
 		return false;
 	}
-	if(my_path() != "Standard")
+	if(my_path() != $path[Standard])
 	{
 		if(!inAftercore())
 		{
@@ -1222,11 +1234,11 @@ boolean asdonBuff(string goal)
 
 boolean canAsdonBuff(effect goal)
 {
-	if(!(auto_get_campground() contains $item[Asdon Martin Keyfob]))
+	if(!(auto_get_campground() contains $item[Asdon Martin keyfob (on ring)]))
 	{
 		return false;
 	}
-	if(!is_unrestricted($item[Asdon Martin Keyfob]))
+	if(!is_unrestricted($item[Asdon Martin keyfob (on ring)]))
 	{
 		return false;
 	}
@@ -1295,15 +1307,15 @@ boolean asdonAutoFeed()
 
 boolean asdonAutoFeed(int goal)
 {
-	if(my_class() == $class[Ed])
+	if(my_class() == $class[Ed the Undying])
 	{
 		return false;
 	}
-	if(!(auto_get_campground() contains $item[Asdon Martin Keyfob]))
+	if(!(auto_get_campground() contains $item[Asdon Martin keyfob (on ring)]))
 	{
 		return false;
 	}
-	if(!is_unrestricted($item[Asdon Martin Keyfob]))
+	if(!is_unrestricted($item[Asdon Martin keyfob (on ring)]))
 	{
 		return false;
 	}
@@ -1344,7 +1356,6 @@ boolean asdonAutoFeed(int goal)
 		Giant Heirloom Grape Tomato,
 		Gin And Tonic,
 		Haggis-Wrapped Haggis-Stuffed Haggis,
-		hot wing,
 		ice-cold Willer,
 		Insanely Spicy Bean Burrito,
 		Insanely Spicy Enchanted Bean Burrito,
@@ -1443,11 +1454,11 @@ boolean asdonAutoFeed(int goal)
 
 boolean asdonFeed(item it, int qty)
 {
-	if(!(auto_get_campground() contains $item[Asdon Martin Keyfob]))
+	if(!(auto_get_campground() contains $item[Asdon Martin keyfob (on ring)]))
 	{
 		return false;
 	}
-	if(!is_unrestricted($item[Asdon Martin Keyfob]))
+	if(!is_unrestricted($item[Asdon Martin keyfob (on ring)]))
 	{
 		return false;
 	}
@@ -1471,14 +1482,11 @@ boolean asdonFeed(item it)
 
 boolean asdonCanMissile()
 {
-	return (auto_get_campground() contains $item[Asdon Martin Keyfob]) && (get_fuel() >= fuel_cost($skill[Asdon Martin: Missile Launcher])) && !get_property("_missileLauncherUsed").to_boolean();
+	return (auto_get_campground() contains $item[Asdon Martin keyfob (on ring)]) && (get_fuel() >= fuel_cost($skill[Asdon Martin: Missile Launcher])) && !get_property("_missileLauncherUsed").to_boolean();
 }
 
 boolean isHorseryAvailable() {
-	if(!get_property("horseryAvailable").to_boolean()) {
-		return false;
-	}
-	return true;
+	return (get_property("horseryAvailable").to_boolean() && auto_is_valid($item[Horsery contract]));
 }
 
 int horseCost()
@@ -1687,26 +1695,26 @@ boolean horsePreAdventure()
 	return getHorse(desiredHorse);
 }
 
-boolean auto_shouldUseWishes()
+boolean auto_haveGenieBottleOrPocketWishes()
 {
-	return get_property("auto_useWishes").to_boolean();
+	item bottle = wrap_item($item[Genie Bottle]);
+	return (item_amount(bottle) > 0 && auto_is_valid(bottle) ||
+	        item_amount($item[Pocket Wish] ) > 0 && auto_is_valid($item[Pocket Wish] ) );
 }
 
 int auto_wishesAvailable()
 {
-	int retval = 0;
-	if (auto_shouldUseWishes())
+	int wishes = 0;
+	item bottle = wrap_item($item[Genie Bottle]);
+	if (item_amount(bottle) > 0 && auto_is_valid(bottle))
 	{
-		if(item_amount($item[Genie Bottle]) > 0 && auto_is_valid($item[Genie Bottle]))
-		{
-			retval += 3 - get_property("_genieWishesUsed").to_int();
-		}
-		if(auto_is_valid($item[pocket wish]))
-		{
-			retval += item_amount($item[pocket wish]);
-		}
+		wishes += 3 - get_property("_genieWishesUsed").to_int();
 	}
-	return retval;
+	if (auto_is_valid($item[pocket wish]))
+	{
+		wishes += item_amount($item[pocket wish]);
+	}
+	return wishes;
 }
 
 boolean makeGenieWish(string wish)
@@ -1718,9 +1726,10 @@ boolean makeGenieWish(string wish)
 	}
 
 	int wish_provider = 0;
-	if(auto_is_valid($item[Genie Bottle]) && item_amount($item[Genie Bottle]) > 0 && get_property("_genieWishesUsed").to_int() < 3)
+	item bottle = wrap_item($item[Genie Bottle]);
+	if(auto_is_valid(bottle) && item_amount(bottle) > 0 && get_property("_genieWishesUsed").to_int() < 3)
 	{
-		wish_provider = $item[genie bottle].to_int();
+		wish_provider = bottle.to_int();
 	}
 	else if(item_amount($item[pocket wish]) > 0 && auto_is_valid($item[pocket wish]))
 	{
@@ -1741,7 +1750,7 @@ boolean makeGenieWish(string wish)
 		return false;
 	}
 
-	handleTracker(to_item(wish_provider), wish, "auto_wishes");
+	handleTracker(to_item(wish_provider), my_location().to_string(), wish, "auto_wishes");
 	return true;
 }
 
@@ -1763,21 +1772,46 @@ boolean makeGenieWish(effect eff)
 	return makeGenieWish("to be " + eff) || have_effect(eff) > 0;
 }
 
-boolean canGenieCombat()
+// Track any failed wishes this run
+boolean[monster] failedWishMonsters;
+
+boolean canGenieCombat(monster mon)
 {
-	if(item_amount($item[Genie Bottle]) == 0 && item_amount($item[pocket wish]) == 0)
+	if(!mon.wishable)
 	{
 		return false;
 	}
-	if((get_property("_genieWishesUsed").to_int() >= 3) && (0 == item_amount($item[pocket wish])))
+	
+	item bottle = wrap_item($item[Genie Bottle]);
+	boolean haveBottle = item_amount(bottle) > 0;
+	boolean bottleWishesLeft = get_property("_genieWishesUsed").to_int() < 3;
+	boolean canUseBottle = haveBottle && bottleWishesLeft && auto_is_valid(bottle);
+	boolean havePocket = item_amount($item[pocket wish]) > 0;
+	boolean canUsePocket = havePocket && auto_is_valid($item[pocket wish]);
+	if(!canUseBottle && !canUsePocket)
 	{
 		return false;
 	}
 	if(get_property("_genieFightsUsed").to_int() >= 3)
 	{
-		return false;
+		return false;  // max 3 fights per day
 	}
 	if(my_adventures() == 0)
+	{
+		return false;  // cannot fight if no adv remaining
+	}
+	string attr = mon.attributes.to_lower_case();
+	if (attr.contains_text("nocopy") || attr.contains_text("boss"))
+	{
+		return false;
+	}
+	// Per wiki page these can't be wished. Didn't bother to add other crypt monsters as we don't summon them
+	// https://kol.coldfront.net/thekolwiki/index.php/Rubbed_it_the_Right_Way
+	if ($monsters[Fantasy Bandit, Modern Zmobie] contains mon)
+	{
+		return false;
+	}
+	if (failedWishMonsters contains mon)
 	{
 		return false;
 	}
@@ -1786,15 +1820,18 @@ boolean canGenieCombat()
 
 boolean makeGenieCombat(monster mon, string option)
 {
-	if(!canGenieCombat())
+	if(!canGenieCombat(mon))
 	{
 		return false;
 	}
 
+	auto_log_info("Using genie to summon " + mon.name, "blue");
 	string wish = "to fight a " + mon;
+	int prev_genieFightsUsed = get_property("_genieFightsUsed").to_int();
 	string[int] pages;
-	int wish_provider = $item[genie bottle].to_int();
-	if (item_amount($item[pocket wish]) > 0)
+	item bottle = wrap_item($item[Genie Bottle]);
+	int wish_provider = bottle.to_int();
+	if (item_amount($item[pocket wish]) > 0 && auto_is_valid($item[pocket wish]))
 	{
 		wish_provider = $item[pocket wish].to_int();
 	}
@@ -1804,13 +1841,14 @@ boolean makeGenieCombat(monster mon, string option)
 
 	autoAdvBypass(5, pages, $location[Noob Cave], option);
 
-	if(get_property("lastEncounter") != mon && get_property("lastEncounter") != "Using the Force")
+	if(prev_genieFightsUsed == get_property("_genieFightsUsed").to_int())
 	{
+		failedWishMonsters[mon] = true;
 		auto_log_warning("Wish: '" + wish + "' failed", "red");
 		return false;
 	}
 	handleTracker(mon, to_item(wish_provider), "auto_copies");
-	handleTracker(to_item(wish_provider), wish, "auto_wishes");
+	handleTracker(to_item(wish_provider), my_location().to_string(), wish, "auto_wishes");
 	return true;
 }
 
@@ -1822,7 +1860,8 @@ boolean makeGenieCombat(monster mon)
 
 boolean makeGeniePocket()
 {
-	if(item_amount($item[Genie Bottle]) == 0)
+	item bottle = wrap_item($item[Genie Bottle]);
+	if(item_amount(bottle) == 0)
 	{
 		return false;
 	}
@@ -1834,7 +1873,7 @@ boolean makeGeniePocket()
 	int count = item_amount($item[Pocket Wish]);
 
 	string wish = "for more wishes";
-	string page = visit_url("inv_use.php?pwd=" + my_hash() + "&which=3&whichitem=9529", false);
+	string page = visit_url("inv_use.php?pwd=" + my_hash() + "&which=3&whichitem=" + bottle.to_int(), false);
 	page = visit_url("choice.php?pwd=" + my_hash() + "&whichchoice=1267&option=1&wish=" + wish);
 
 	if(count == item_amount($item[Pocket Wish]))
@@ -1842,13 +1881,13 @@ boolean makeGeniePocket()
 		return false;
 	}
 
-	handleTracker($item[Genie Bottle], "for more wishes", "auto_wishes");
+	handleTracker(bottle, "for more wishes", "auto_wishes");
 	return true;
 }
 
 boolean spacegateVaccineAvailable()
 {
-	if(my_path() == "Kingdom of Exploathing") return false;
+	if(in_koe()) return false;
 
 	if(!get_property("spacegateAlways").to_boolean() || get_property("_spacegateToday").to_boolean())
 	{

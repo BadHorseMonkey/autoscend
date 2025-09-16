@@ -1,6 +1,6 @@
 boolean isActuallyEd()
 {
-	return (my_class() == $class[Ed] || my_path() == "Actually Ed the Undying");
+	return my_path() == $path[Actually Ed the Undying];
 }
 
 int ed_spleen_limit()
@@ -20,7 +20,6 @@ void ed_initializeSettings()
 {
 	if (isActuallyEd())
 	{
-		set_property("auto_crackpotjar", "done");
 		set_property("auto_day1_dna", "finished");
 		set_property("auto_getBeehive", false);
 		set_property("auto_getStarKey", false);
@@ -102,15 +101,6 @@ void ed_initializeDay(int day)
 
 		if(get_property("auto_day_init").to_int() < 2)
 		{
-			if(get_property("auto_dickstab").to_boolean() && chateaumantegna_available())
-			{
-				boolean[item] furniture = chateaumantegna_decorations();
-				if(!furniture[$item[Ceiling Fan]])
-				{
-					chateaumantegna_buyStuff($item[Ceiling Fan]);
-				}
-			}
-
 			if(item_amount($item[gym membership card]) > 0)
 			{
 				use(1, $item[gym membership card]);
@@ -122,7 +112,6 @@ void ed_initializeDay(int day)
 			}
 			pullXWhenHaveY($item[hand in glove], 1, 0);
 			pullXWhenHaveY($item[blackberry galoshes], 1, 0);
-			pullXWhenHaveY(whatHiMein(), 1, 0);
 		}
 	}
 
@@ -220,7 +209,27 @@ boolean handleServant(servant who)
 	}
 	if(!have_servant(who))
 	{
-		return false;
+		if(my_servant() == $servant[none])
+		{
+			//might have encounted bug in KoL. Try to work around it
+			//bug happens when level 7 or great scribe is active when logged out of KoL
+			//symptom is active servant is $servant[none] and can't change it
+			//priest is always unlocked prior to scribe. Try to switch to priest to clear bug
+			
+			//clear error
+			cli_execute("/servant priest");
+			//refresh mafia's servant info
+			visit_url("place.php?whichplace=edbase&action=edbase_door");
+			if(!have_servant(who))
+			{
+				//cleared bug. Must actually not have requested servant
+				return false;
+			}
+		}
+		else
+		{
+			return false;
+		}
 	}
 	if(my_servant() != who)
 	{
@@ -475,65 +484,46 @@ boolean ed_buySkills()
 		while(imbuePoints > 0)
 		{
 			servant tryImbue = $servant[none];
-
-			if(get_property("auto_dickstab").to_boolean())
+			if(have_servant($servant[Priest]) && ($servant[Priest].experience < 81))
 			{
-				if(have_servant($servant[Priest]) && ($servant[Priest].experience < 81))
-				{
-					tryImbue = $servant[Priest];
-				}
-				else if(have_servant($servant[Scribe]) && ($servant[Scribe].experience < 441))
-				{
-					tryImbue = $servant[Scribe];
-				}
-				else if(have_servant($servant[Maid]) && ($servant[Maid].experience < 441) && (my_level() >= 12))
-				{
-					tryImbue = $servant[Maid];
-				}
+				tryImbue = $servant[Priest];
+			}
+			else if(have_servant($servant[Cat]) && ($servant[Cat].experience < 199))
+			{
+				tryImbue = $servant[Cat];
+			}
+			else if(have_servant($servant[Maid]) && ($servant[Maid].experience < 199))
+			{
+				tryImbue = $servant[Maid];
+			}
+			else if(have_servant($servant[Belly-Dancer]) && ($servant[Belly-Dancer].experience < 341))
+			{
+				tryImbue = $servant[Belly-Dancer];
+			}
+			else if(have_servant($servant[Scribe]) && ($servant[Scribe].experience < 99))
+			{
+				tryImbue = $servant[Scribe];
+			}
+			else if(have_servant($servant[Maid]) && ($servant[Maid].experience < 441) && (my_level() >= 12))
+			{
+				tryImbue = $servant[Maid];
+			}
+			else if(have_servant($servant[Cat]) && ($servant[Cat].experience < 441) && (my_level() >= 12))
+			{
+				tryImbue = $servant[Cat];
+			}
+			else if(have_servant($servant[Scribe]) && ($servant[Scribe].experience < 441) && (my_level() >= 12))
+			{
+				tryImbue = $servant[Scribe];
 			}
 			else
 			{
-				if(have_servant($servant[Priest]) && ($servant[Priest].experience < 81))
+				if((my_level() >= 9) && (my_level() <= 12))
 				{
-					tryImbue = $servant[Priest];
-				}
-				else if(have_servant($servant[Cat]) && ($servant[Cat].experience < 199))
-				{
-					tryImbue = $servant[Cat];
-				}
-				else if(have_servant($servant[Maid]) && ($servant[Maid].experience < 199))
-				{
-					tryImbue = $servant[Maid];
-				}
-				else if(have_servant($servant[Belly-Dancer]) && ($servant[Belly-Dancer].experience < 341))
-				{
-					tryImbue = $servant[Belly-Dancer];
-				}
-				else if(have_servant($servant[Scribe]) && ($servant[Scribe].experience < 99))
-				{
-					tryImbue = $servant[Scribe];
-				}
-				else if(have_servant($servant[Maid]) && ($servant[Maid].experience < 441) && (my_level() >= 12))
-				{
-					tryImbue = $servant[Maid];
-				}
-				else if(have_servant($servant[Cat]) && ($servant[Cat].experience < 441) && (my_level() >= 12))
-				{
-					tryImbue = $servant[Cat];
-				}
-				else if(have_servant($servant[Scribe]) && ($servant[Scribe].experience < 441) && (my_level() >= 12))
-				{
-					tryImbue = $servant[Scribe];
-				}
-				else
-				{
-					if((my_level() >= 9) && (my_level() <= 12))
+					// got scribe early. Imbue to level 21 for passive stat gain
+					if(have_servant($servant[Scribe]) && ($servant[Scribe].experience < 441))
 					{
-						// got scribe early. Imbue to level 21 for passive stat gain
-						if(have_servant($servant[Scribe]) && ($servant[Scribe].experience < 441))
-						{
-							tryImbue = $servant[Scribe];
-						}
+						tryImbue = $servant[Scribe];
 					}
 				}
 			}
@@ -588,9 +578,9 @@ skill ed_nextUpgrade()
 	{
 		return $skill[Another Extra Spleen]; // 10 Ka
 	}
-	else if (!have_skill($skill[Replacement Stomach]))
+	else if (!have_skill($skill[Replacement Liver]))
 	{
-		return $skill[Replacement Stomach]; // 30 Ka
+		return $skill[Replacement Liver]; // 30 Ka
 	}
 	else if (!have_skill($skill[Upgraded Legs]))
 	{
@@ -612,9 +602,9 @@ skill ed_nextUpgrade()
 	{
 		return $skill[Just One More Extra Spleen]; // 25 Ka
 	}
-	else if (!have_skill($skill[Replacement Liver]))
+	else if (!have_skill($skill[Replacement Stomach]))
 	{
-		return $skill[Replacement Liver]; // 30 Ka
+		return $skill[Replacement Stomach]; // 30 Ka
 	}
 	else if (!have_skill($skill[Elemental Wards]))
 	{
@@ -758,7 +748,7 @@ boolean ed_needShop()
 			auto_log_info("Ed needs Linen Bandages! UNDYING for a free trip to the Underworld!");
 			return true;
 		}
-		else if (item_amount($item[Holy Spring Water]) < 1 && coins >= 1 && (my_maxmp() - my_mp() < 50))
+		else if (item_amount($item[Holy Spring Water]) < 1 && coins >= 1 && (my_maxmp() - my_mp() > 50))
 		{
 			auto_log_info("Ed needs Holy Spring Water! UNDYING for a free trip to the Underworld!");
 			return true;
@@ -973,7 +963,7 @@ void ed_handleAdventureServant(location loc)
 	}
 
 	// Initial Ka farming to get Spleen & Legs upgrades.
-	if ($locations[Hippy Camp, The Neverending Party, The Secret Government Laboratory, The SMOOCH Army HQ, VYKEA] contains loc && my_daycount() == 1)
+	if ($locations[The Hippy Camp, The Neverending Party, The Secret Government Laboratory, The SMOOCH Army HQ, VYKEA] contains loc && my_daycount() == 1)
 	{
 		myServant = $servant[Priest];
 	}
@@ -1019,7 +1009,7 @@ void ed_handleAdventureServant(location loc)
 	// but it's also an excellent Ka farming zone and we have to spend a bunch of adventures there
 	if (loc == $location[The Penultimate Fantasy Airship])
 	{
-		if (!possessEquipment($item[Mohawk wig]) || !possessEquipment($item[amulet of extreme plot significance]) || !possessEquipment($item[titanium assault umbrella]))
+		if (!possessEquipment($item[Mohawk wig]) || !possessEquipment($item[amulet of extreme plot significance]) || (!possessEquipment($item[titanium assault umbrella]) && !possessEquipment($item[unbreakable umbrella])))
 		{
 			myServant = $servant[Cat];
 		}
@@ -1034,6 +1024,9 @@ void ed_handleAdventureServant(location loc)
 
 boolean L1_ed_island()
 {
+	//reset tracking of Ka farming
+	remove_property("_auto_farmingKaAsEd");
+
 	if(!elementalPlanes_access($element[spooky]))
 	{
 		return false;
@@ -1046,13 +1039,6 @@ boolean L1_ed_island()
 	}
 
 	skill blocker = $skill[Still Another Extra Spleen];
-	if(get_property("auto_dickstab").to_boolean())
-	{
-		if(turns_played() > 22)
-		{
-			return false;
-		}
-	}
 
 	if((my_level() >= 10) || ((my_level() >= 8) && have_skill(blocker)))
 	{
@@ -1093,12 +1079,14 @@ boolean L1_ed_island()
 	if((my_turncount() <= 1) && (my_meat() > 10000))
 	{
 		int need = min(4, (my_maxmp() - my_mp()) / 10);
-		buyUpTo(need, $item[Doc Galaktik\'s Invigorating Tonic]);
+		auto_buyUpTo(need, $item[Doc Galaktik\'s Invigorating Tonic]);
 		use(need, $item[Doc Galaktik\'s Invigorating Tonic]);
 		cli_execute("auto_post_adv");
 	}
 
-	buffMaintain($effect[Experimental Effect G-9], 0, 1, 1);
+	buffMaintain($effect[Experimental Effect G-9]);
+	//track that we are farming Ka as Ed
+	set_property("_auto_farmingKaAsEd", true);
 	autoAdv($location[The Secret Government Laboratory]);
 	if(item_amount($item[Bottle-Opener Keycard]) > 0)
 	{
@@ -1110,6 +1098,9 @@ boolean L1_ed_island()
 
 boolean L1_ed_islandFallback()
 {
+	//reset tracking of Ka farming
+	remove_property("_auto_farmingKaAsEd");
+
 	if(elementalPlanes_access($element[spooky]))
 	{
 		return false;
@@ -1123,6 +1114,12 @@ boolean L1_ed_islandFallback()
 		}
 	}
 
+	//track that we are farming Ka as Ed
+	set_property("_auto_farmingKaAsEd", true);
+	if (auto_remainingSpeakeasyFreeFights() > 0)
+	{
+		return speakeasyCombat();
+	}
 	if (neverendingPartyAvailable())
 	{
 		return neverendingPartyCombat();
@@ -1180,7 +1177,7 @@ boolean L1_ed_islandFallback()
 	if (have_skill($skill[Upgraded Legs]) || item_amount($item[Ka coin]) >= 10)
 	{
 		auto_change_mcd(11);
-		boolean retVal = autoAdv($location[Hippy Camp]);
+		boolean retVal = autoAdv($location[The Hippy Camp]);
 		if (item_amount($item[Filthy Corduroys]) > 0)
 		{
 			if (closet_amount($item[Filthy Corduroys]) > 0)
@@ -1239,27 +1236,6 @@ boolean L9_ed_chasmStart()
 		autoAdvBypass("place.php?whichplace=orc_chasm&action=bridge_done", $location[The Smut Orc Logging Camp]);
 
 		set_property("auto_chasmBusted", true);
-		return true;
-	}
-	return false;
-}
-
-boolean L9_ed_chasmBuildClover(int need)
-{
-	if (isActuallyEd() && (need > 3) && (item_amount($item[Disassembled Clover]) > 2))
-	{
-		use(1, $item[disassembled clover]);
-		backupSetting("cloverProtectActive", false);
-		autoAdvBypass("adventure.php?snarfblat=295", $location[The Smut Orc Logging Camp]);
-		if(item_amount($item[Ten-Leaf Clover]) > 0)
-		{
-			auto_log_info("Wandering adventure in The Smut Orc Logging Camp, boo. Gonna have to do this again.");
-			use(item_amount($item[Ten-Leaf Clover]), $item[Ten-Leaf Clover]);
-			restoreSetting("cloverProtectActive");
-			return true;
-		}
-		restoreSetting("cloverProtectActive");
-		visit_url("place.php?whichplace=orc_chasm&action=bridge"+(to_int(get_property("chasmBridgeProgress"))));
 		return true;
 	}
 	return false;
@@ -1475,8 +1451,10 @@ boolean LM_edTheUndying()
 
 	// we should open the manor second floor sooner rather than later as starting the level 11 quest
 	// ruins our pool skill and having delay burning zones open is nice.
-	if (LX_unlockManorSecondFloor() || LX_unlockHauntedLibrary() || LX_unlockHauntedBilliardsRoom(true)) {
-		return true;
+	if(my_level()<11) {
+		if (LX_unlockManorSecondFloor() || LX_unlockHauntedLibrary() || LX_unlockHauntedBilliardsRoom(true)) {
+			return true;
+		}
 	}
 	// as we do hippy side, the war is a 2 Ka quest (excluding sidequests but that shouldn't matter)
 	if (L12_islandWar())
@@ -1497,6 +1475,10 @@ boolean LM_edTheUndying()
 	// Castle zones are all 1 Ka so may as well finish it off
 	if (L10_plantThatBean() || L10_airship() || L10_basement() || L10_ground() || L10_topFloor())
 	{
+		return true;
+	}
+	// If we didn't get the Spookyraven unlock done before level 11, do it now since airship is done and we want more delay zones open
+	if (LX_unlockManorSecondFloor() || LX_unlockHauntedLibrary() || LX_unlockHauntedBilliardsRoom(true)) {
 		return true;
 	}
 	// Smut Orcs are 1 Ka so build the bridge.
@@ -1533,16 +1515,6 @@ boolean LM_edTheUndying()
 	if (LX_spookyravenManorSecondFloor() || L11_mauriceSpookyraven() || L11_talismanOfNam() || L11_palindome())
 	{
 		return true;
-	}
-
-	if (!have_skill($skill[Even More Elemental Wards])) { 
-		// if we don't have the last Elemental Resistance Upgrade, we still need Ka
-		// Thus we shouldn't block quests that Shen might request as almost all of them are Ka zones.
-		if(allowSoftblockShen()) {
-			auto_log_warning("I was trying to avoid zones that Shen might need, but I still need Ka for upgrades.", "red");
-			set_property("auto_shenSkipLastLevel", my_level());
-			return true;
-		}
 	}
 
 	// Crush the jackass adventurer!

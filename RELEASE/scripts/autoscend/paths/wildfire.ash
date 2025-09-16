@@ -1,6 +1,6 @@
 boolean in_wildfire()
 {
-	return auto_my_path() == "Wildfire";
+	return my_path() == $path[Wildfire];
 }
 
 void wildfire_initializeSettings()
@@ -39,7 +39,7 @@ boolean wildfire_warboss_check()
 {
 	//Prepare to fight [The Big Ignatowicz] or [The Man on Fire] in wildfire path. Also check if we are ready for the fight.
 	//Return true if we are not ready and should delay this fight
-	//[Hippy Camp] and [Frat House] cannot reduced fire level from 5. Take 20-25% maxHP hot passive dmg per round. always lose initiative
+	//[The Hippy Camp] and [The Orcish Frat House] cannot reduced fire level from 5. Take 20-25% maxHP hot passive dmg per round. always lose initiative
 	if(!in_wildfire())
 	{
 		return false;	//since we are not in wildfire, we are considered "ready" so we do not block the quest in other paths
@@ -189,7 +189,7 @@ boolean LX_wildfire_grease_pump()
 		pull_meat(npc_price($item[pump grease]));
 		if(my_meat() >= npc_price($item[pump grease]))
 		{
-			buyUpTo(1, $item[pump grease]);
+			auto_buyUpTo(1, $item[pump grease]);
 		}
 		else
 		{
@@ -430,10 +430,13 @@ boolean LX_wildfire_water()
 	//use water in a variety of ways to reduce fire levels. putting it in pre-adv is problematic since we need to spend adventures here
 	//individual location watering first
 	
-	//for stone wool. needed at level 11 but we acquire it early using [Baa'baa'bu'ran]. no qualifiers since this is always needed
-	if(LX_wildfire_hose($location[The Hidden Temple])) return true;
+	//for stone wool. needed at level 11 but we acquire it early using [Baa'baa'bu'ran]. Skip if we've somehow already progressed past that stage
+	if(internalQuestStatus("questL11Worship") < 3)
+	{
+		if(LX_wildfire_hose($location[The Hidden Temple])) return true;
+	}
 	
-	if(!inKnollSign())		//knoll sign does not need to farm components for bitchin meatcar
+	if(!isDesertAvailable() && !inKnollSign()) //knoll sign does not need to farm components for bitchin meatcar
 	{
 		if(LX_wildfire_hose($location[The Degrassi Knoll Garage])) return true;
 	}
@@ -449,6 +452,21 @@ boolean LX_wildfire_water()
 	if(my_level() > 10 && zone_available($location[The Hidden Bowling Alley]))
 	{
 		LX_wildfire_hose($location[The Hidden Bowling Alley]);		//part of level 11 quest. potentially might want to go after NC instead
+	}
+	
+	if(in_hardcore() && !haveWarOutfit() && internalQuestStatus("questL12War") == 0)	//we need war outfit
+	{
+		abort("Due to tracking issues you need to manually acquire the necessary war outfit and run me again");
+// below is code for automation that is not functional due to mafia not tracking fire levels correctly. When fixed upstream remove the the abort and uncomment the code
+//  https://github.com/loathers/autoscend/issues/892#issuecomment-934059485
+//		if(auto_warSide() == "fratboy")
+//		{
+//			LX_wildfire_hose($location[Wartime Frat House (Hippy Disguise)]);
+//		}
+//		else
+//		{
+//			LX_wildfire_hose($location[Wartime Hippy Camp (Frat Disguise)]);
+//		}
 	}
 	
 	//mass watering. waters all areas of a certain type (outdoor, indoor, underground) reducing fire from 5 to 2

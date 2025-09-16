@@ -1,12 +1,12 @@
-boolean in_boris()
+boolean is_boris()
 {
-	return my_class() == $class[Avatar of Boris];
+	return my_path() == $path[Avatar of Boris];
 }
 
 void borisTrusty()
 {
 	//the only time boris wants to take off trusty is if it is bedtime and he wants to wear a halo. Which is unaffected by this
-	if(!in_boris())
+	if(!is_boris())
 	{
 		return;
 	}
@@ -16,7 +16,7 @@ void borisTrusty()
 boolean borisAdjustML()
 {
 	//set target ML boosts for boris.
-	if(!in_boris())
+	if(!is_boris())
 	{
 		return false;
 	}
@@ -48,12 +48,11 @@ boolean borisAdjustML()
 
 void boris_initializeSettings()
 {
-	if(in_boris())
+	if(is_boris())
 	{
 		auto_log_info("Initializing Avatar of Boris settings", "blue");
 		set_property("auto_borisSkills", -1);
 		set_property("auto_wandOfNagamar", false);
-		set_property("auto_doArmory", true);
 
 		# Mafia r16876 does not see the Boris Helms in storage and will not pull them.
 		# We have to force the issue.
@@ -64,7 +63,7 @@ void boris_initializeSettings()
 
 void boris_initializeDay(int day)
 {
-	if(!in_boris())
+	if(!is_boris())
 	{
 		return;
 	}
@@ -75,16 +74,6 @@ void boris_initializeDay(int day)
 
 		if(get_property("auto_day_init").to_int() < 2)
 		{
-
-			if(get_property("auto_dickstab").to_boolean() && chateaumantegna_available())
-			{
-				boolean[item] furniture = chateaumantegna_decorations();
-				if(!furniture[$item[Ceiling Fan]])
-				{
-					chateaumantegna_buyStuff($item[Ceiling Fan]);
-				}
-			}
-
 			if(item_amount($item[gym membership card]) > 0)
 			{
 				use(1, $item[gym membership card]);
@@ -94,17 +83,16 @@ void boris_initializeDay(int day)
 			{
 				acquireHermitItem($item[Seal Tooth]);
 			}
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			pullXWhenHaveY($item[hand in glove], 1, 0);
 			pullXWhenHaveY($item[blackberry galoshes], 1, 0);
-			pullXWhenHaveY(whatHiMein(), 1, 0);
 		}
 	}
 	else if(day == 3)
 	{
 		if(get_property("auto_day_init").to_int() < 3)
 		{
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			set_property("auto_day_init", 3);
 		}
 	}
@@ -112,7 +100,7 @@ void boris_initializeDay(int day)
 	{
 		if(get_property("auto_day_init").to_int() < 4)
 		{
-			while(acquireHermitItem($item[Ten-Leaf Clover]));
+			while(acquireHermitItem($item[11-Leaf Clover]));
 			set_property("auto_day_init", 4);
 		}
 	}
@@ -120,7 +108,7 @@ void boris_initializeDay(int day)
 
 void boris_buySkills()
 {
-	if(!in_boris())
+	if(!is_boris())
 	{
 		return;
 	}
@@ -284,7 +272,7 @@ void boris_buySkills()
 boolean borisDemandSandwich(boolean immediately)
 {
 	//Boris can summon a sandwich 3 times per day at cost of 5 MP each
-	if(!in_boris())
+	if(!is_boris())
 	{
 		return false;
 	}
@@ -344,7 +332,7 @@ void borisWastedMP()
 {
 	//Check for wasted MP regeneration and use it up. primarily called towards the end of auto_pre_adv.ash
 	//Mostly the MP regen would come from clancy
-	if(!in_boris())
+	if(!is_boris())
 	{
 		return;
 	}
@@ -380,7 +368,7 @@ boolean borisAcquireHP(int goal)
 {
 	//boris cannot use the normal acquireHP function until it is modified allow multi using skills.
 	//that fix is nontrivial so until such a change is made here is a function that makes boris playable
-	if(!in_boris())
+	if(!is_boris())
 	{
 		return false;
 	}
@@ -421,7 +409,7 @@ boolean LM_boris()
 	//this function is called early once every loop of doTasks() in autoscend.ash
 	//if something in this function returns true then it will restart the loop and get called again.
 	
-	if(!in_boris())
+	if(!is_boris())
 	{
 		return false;
 	}

@@ -1,6 +1,6 @@
 # NOTICE
 
-autoscend (formerly [sl_ascend](https://github.com/soolar/sl_ascend); formerly, formally cc_ascend) is under new managment. The previous developers decided they could no longer continue supporting the script or Kingdom of Loathing after [actions of Jick and some of the other developers](https://www.reddit.com/r/kol/comments/d0cq9s/allegations_of_misconduct_by_asymmetric_members/) were made public.
+autoscend (formerly [sl_ascend](https://github.com/soolar/sl_ascend); formerly, formally cc_ascend) is under new management. The previous developers decided they could no longer continue supporting the script or Kingdom of Loathing after [actions of Jick and some of the other developers](https://www.reddit.com/r/kol/comments/d0cq9s/allegations_of_misconduct_by_asymmetric_members/) were made public.
 
 The script was moved to this more communal location and has tentative support from some much less experienced developers. Basic support is expected to continue but fixes and enhancements will likely be slow. Large feature support (such as new challenge paths) will probably not happen without more support from the community. Feel free to [pitch in](./docs/CONTRIBUTING.md).
 
@@ -23,7 +23,7 @@ This work is licensed under a [Creative Commons Attribution-NonCommercial-ShareA
 
 Run this command in the graphical CLI:
 ```
-svn checkout https://github.com/Loathing-Associates-Scripting-Society/autoscend/branches/master/RELEASE/
+git checkout loathers/autoscend
 ```
 Will require [a recent build of KoLMafia](http://builds.kolmafia.us/job/Kolmafia/lastSuccessfulBuild/).
 
@@ -37,7 +37,7 @@ may not be restored properly to their pre-run values.
 ## Requirements
 
 There are a couple specific requirements to run autoscend effectively. If you run in to issues in
-a path that allows access to your normally permed skills, don't report them if you don't have these
+a path that allows access to the regular six classes, don't report them if you don't have these
 skills permed:
 
 * Saucestorm
@@ -51,8 +51,7 @@ Other things that help greatly but shouldn't be strictly required (I think):
 
 ## Community Service
 
-If you want to run HCCS, the recommended setup is Sauceror with all of the skills mentioned in the
-requirements section. Other classes should work as well, but Sauceror works best.
+Community Service is no longer supported.
 
 ## Two Crazy Random Summer
 
@@ -65,6 +64,10 @@ The recommended choices in Valhalla for Actually Ed the Undying are
 * Astral Pilsners.
 * Astral Ring if you have less than 20 skill points, Astral Belt otherwise.
 * Opossum moon sign
+
+## Avatar of Shadows Over Loathing (AoSOL)
+
+If you do run AoSOL, you will likely run into MP regen issues if you are not well-equipped.
 
 ## Warning
 
@@ -87,7 +90,7 @@ Thanks to the following people for their contributions via pull requests:
 
 soolar (IGN: Soolar the Second (#2463557))
 
-Rinn (IGN: Epicgamer (#37195))
+Rinn (IGN: Rinnith (#37195))
 
 jaspercb (IGN: Jeparo (#2246666))
 
@@ -108,6 +111,12 @@ chunkinaround (IGN: threebullethamburgler (#1993636))
 Phillammon (IGN: Phillammon (#2393910))
 
 Tokoeka (IGN: Asmodais (#2071543))
+
+Alium (IGN: Alium (#1933235))
+
+dsimich (IGN: erct657 (#584803))
+
+HippoKingKoL (IGN: HippoKing (#1716533))
 
 ## Special Thanks
 

@@ -37,11 +37,6 @@ boolean auto_sausageBlocked()
 		return true;
 	}
 	
-	if (get_property("auto_saveMagicalSausage").to_boolean())
-	{
-		return true;
-	}
-	
 	if (auto_sausageLeftToday() <= 0)
 	{
 		return true;
@@ -109,7 +104,7 @@ boolean auto_sausageWanted()
 	int totalSausageToEat = ceil(progress * (totalSausageEstimated - sausageForBreakfast)) + sausageForBreakfast;
 	
 	// a reserve is kept for MP restoration
-	boolean noMP = my_class() == $class[Vampyre];
+	boolean noMP = in_darkGyffte();
 	int sausage_reserve_size = noMP ? 0 : 3;
 	
 	// no more reserve when close to full or when completely out of adventures
@@ -160,7 +155,7 @@ boolean auto_sausageGrind(int numSaus, boolean failIfCantMakeAll)
 		return false;
 		
 	//it is actually possible to have a casing but not have the kramco grinder
-	if(!possessEquipment($item[Kramco Sausage-o-Matic&trade;]))
+	if(!possessEquipment(wrap_item($item[Kramco Sausage-o-Matic&trade;])))
 	{
 		return false;
 	}
@@ -181,8 +176,6 @@ boolean auto_sausageGrind(int numSaus, boolean failIfCantMakeAll)
 	int pastesNeeded = 0;
 	int pastesAvail = item_amount($item[meat paste]);
 	int meatToSave = 1000 + meatReserve();
-	if(auto_my_path() == "Community Service")
-		meatToSave = 500;
 	for i from 1 to numSaus
 	{
 		int sausNum = i + sausMade;
@@ -224,13 +217,14 @@ boolean auto_sausageEatEmUp(int maxToEat)
 	if(item_amount($item[magical sausage]) < 1)
 		return false;
 
-	boolean noMP = my_class() == $class[Vampyre];
+	boolean noMP = in_darkGyffte();
 	int originalMp = my_maxmp();
 	if(!noMP)
 	{
 		auto_log_info("We're gonna slurp up some sausage, let's make sure we have enough max mp", "blue");
 		cli_execute("checkpoint");
-		maximize("mp,-tie", false);
+		addToMaximize("1000mp,-tie");
+		equipMaximizedGear();
 	}
 	// I could optimize this a little more by eating more sausage at once if you have enough max mp...
 	// but meh.
@@ -243,7 +237,7 @@ boolean auto_sausageEatEmUp(int maxToEat)
 			int desiredMp = max(my_maxmp() - 999, 0);
 			int mpToBurn = max(my_mp() - desiredMp, 0);
 			if(mpToBurn > 0)
-				cli_execute("burn " + mpToBurn);
+				auto_burnMP(mpToBurn);
 		}
 
 		if(!eat(1, $item[magical sausage]))
@@ -260,7 +254,7 @@ boolean auto_sausageEatEmUp(int maxToEat)
 	{
 		int mpToBurn = max(my_mp() - originalMp, 0);
 		if(mpToBurn > 0)
-			cli_execute("burn " + mpToBurn);
+			auto_burnMP(mpToBurn);
 		cli_execute("outfit checkpoint");
 	}
 
@@ -272,7 +266,8 @@ boolean auto_sausageEatEmUp() {
 }
 
 boolean auto_haveKramcoSausageOMatic() {
-	if (possessEquipment($item[Kramco Sausage-o-Matic&trade;]) && auto_can_equip($item[Kramco Sausage-o-Matic&trade;])) {
+	item kramco = wrap_item($item[Kramco Sausage-o-Matic&trade;]);
+	if (possessEquipment(kramco) && auto_can_equip(kramco)) {
 		return true;
 	}
 	return false;
@@ -317,8 +312,13 @@ boolean auto_sausageGoblin(location loc, string option)
 		return true;
 	}
 
-	autoEquip($item[Kramco Sausage-o-Matic&trade;]);
-	return autoAdv(1, loc, option);
+	if(autoEquip(wrap_item($item[Kramco Sausage-o-Matic&trade;])))
+	{
+		set_property("auto_nextEncounter","sausage goblin");
+		return autoAdv(1, loc, option);
+	}
+	set_property("auto_nextEncounter","");
+	return false;
 }
 
 boolean pirateRealmAvailable()
@@ -346,11 +346,12 @@ boolean LX_unlockPirateRealm()
 
 boolean auto_saberChoice(string choice)
 {
-	if(!is_unrestricted($item[Fourth of May Cosplay Saber]))
+	item saber = wrap_item($item[Fourth of May cosplay saber]);
+	if(!is_unrestricted(saber))
 	{
 		return false;
 	}
-	if(!possessEquipment($item[Fourth of May Cosplay Saber]))
+	if(!possessEquipment(saber))
 	{
 		return false;
 	}
@@ -389,13 +390,13 @@ boolean auto_saberChoice(string choice)
 
 boolean auto_saberDailyUpgrade(int day)
 {
-	if (isActuallyEd())
+	if(isActuallyEd())
 	{
 		return auto_saberChoice("mp");
 	}
 
 	// Maybe famweight is better, I don't know.
-	if (in_plumber())
+	if(in_plumber())
 	{
 		return auto_saberChoice("res");
 	}
@@ -416,11 +417,12 @@ monster auto_saberCurrentMonster()
  */
 int auto_saberChargesAvailable()
 {
-	if(!is_unrestricted($item[Fourth of May cosplay saber kit]))
+	item saber = wrap_item($item[Fourth of May cosplay saber]);
+	if(!is_unrestricted(saber))
 	{
 		return 0;
 	}
-	if(!possessEquipment($item[Fourth of May cosplay saber]))
+	if(!possessEquipment(saber))
 	{
 		return 0;
 	}
@@ -447,6 +449,22 @@ string auto_combatSaberYR()
 {
 	set_property("choiceAdventure1387", 3);
 	return "skill " + $skill[Use the Force];
+}
+
+skill auto_spoonCombatSkill()
+{
+	switch(my_primestat())
+	{
+		case $stat[Muscle]:
+			return $skill[Dragoon Platoon];
+		case $stat[Mysticality]:
+			return $skill[Spittoon Monsoon];
+		case $stat[Moxie]:
+			return $skill[Festoon Buffoon];
+		default:
+			abort("Invalid mainstat, what?");
+			return $skill[none]; // needed or mafia complains about missing return value
+	}
 }
 
 string auto_spoonGetDesiredSign()
@@ -568,7 +586,7 @@ boolean auto_spoonReadyToTuneMoon()
 		abort("Something weird is going on with auto_spoonsign. It's not an invalid/blank value, but also not a knoll, canadia, or gnomad sign? This is impossible.");
 	}
 
-	if(my_sign() == "Vole" && (get_property("cyrptAlcoveEvilness") > 26 || get_property("questL07Cyrptic") == "unstarted"))
+	if(my_sign() == "Vole" && (get_property("cyrptAlcoveEvilness").to_int() > 14 + cyrptEvilBonus() || get_property("questL07Cyrptic") == "unstarted"))
 	{
 		// we want to stay vole long enough to do the alcove, since the initiative helps
 		return false;
@@ -588,10 +606,19 @@ boolean auto_spoonReadyToTuneMoon()
 			// we want to get the meatcar via the knoll store
 			return false;
 		}
-		if((auto_get_campground() contains $item[Asdon Martin Keyfob]) && is_unrestricted($item[Asdon Martin Keyfob]))
+		if((auto_get_campground() contains $item[Asdon Martin keyfob (on ring)]) && is_unrestricted($item[Asdon Martin keyfob (on ring)]) ||
+		   (auto_is_valid($familiar[cookbookbat]) && have_familiar($familiar[cookbookbat])))
 		{
 			// we want to get the bugbear outfit before switching away for easy bread access
-			if(!buyUpTo(1, $item[bugbear beanie]) || !buyUpTo(1, $item[bugbear bungguard]))
+			if(!auto_buyUpTo(1, $item[bugbear beanie]) || !auto_buyUpTo(1, $item[bugbear bungguard]))
+			{
+				return false;
+			}
+		}
+		// We want the frilly skirt in LKS
+		if(in_lowkeysummer())
+		{
+			if(!auto_buyUpTo(1, $item[frilly skirt]))
 			{
 				return false;
 			}
@@ -782,9 +809,10 @@ int auto_beachCombFreeUsesLeft(){
 }
 
 boolean auto_beachUseFreeCombs() {
-	if(!auto_beachCombAvailable()) { return false; }
-	if(get_property("_freeBeachWalksUsed").to_int() >= 11) { return false; }
-	cli_execute("CombBeach free");
+	int freeCombs = auto_beachCombFreeUsesLeft();
+	if(my_adventures() == 0) { return false; }
+	if(freeCombs <= 0) { return false; }
+	cli_execute(`combo {freeCombs}`);
 	return true;
 }
 

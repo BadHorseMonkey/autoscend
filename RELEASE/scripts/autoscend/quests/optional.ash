@@ -1,45 +1,5 @@
 // All prototypes for this code described in autoscend_header.ash
 
-boolean LX_artistQuest()
-{
-	if((get_property("auto_doArtistQuest").to_boolean()) && (get_property("questM02Artist") != "finished"))
-	{
-		if(get_property("questM02Artist") == "unstarted")
-		{
-			visit_url("place.php?whichplace=town_wrong&action=townwrong_artist_noquest");
-			visit_url("place.php?whichplace=town_wrong&action=townwrong_artist_noquest&getquest=1");
-			visit_url("place.php?whichplace=town_wrong&action=townwrong_artist_quest");
-		}
-		if(get_property("questM02Artist") == "started")
-		{
-			if(item_amount($item[Pretentious Paintbrush]) == 0)
-			{
-				autoAdv($location[The Outskirts of Cobb\'s Knob]);
-			}
-			else if(item_amount($item[Pretentious Palette]) == 0)
-			{
-				autoAdv($location[The Haunted Pantry]);
-			}
-			else if(item_amount($item[Pail of Pretentious Paint]) == 0)
-			{
-				autoAdv($location[The Sleazy Back Alley]);
-			}
-			else
-			{
-				visit_url("place.php?whichplace=town_wrong&action=townwrong_artist_quest");
-			}
-			return true;
-		}
-		else
-		{
-			auto_log_warning("Failed starting artist quest, rejecting completely.", "red");
-			set_property("auto_doArtistQuest", false);
-			return false;
-		}
-	}
-	return false;
-}
-
 boolean LX_unlockThinknerdWarehouse(boolean spend_resources)
 {
 	//unlocks [The Thinknerd Warehouse], returns true if successful or adv is spent
@@ -149,7 +109,7 @@ boolean LX_unlockThinknerdWarehouse(boolean spend_resources)
 	getShirtWhenHaveNone($item[bat-ass leather jacket]);		//77 mus req
 
 	//wish for a shirt
-	if(spend_resources && auto_wishesAvailable() > 0 && auto_shouldUseWishes() && item_amount($item[blessed rustproof +2 gray dragon scale mail]) == 0)
+	if(spend_resources && auto_wishesAvailable() > 0 && item_amount($item[blessed rustproof +2 gray dragon scale mail]) == 0)
 	{
 		makeGenieWish("for a blessed rustproof +2 gray dragon scale mail");
 		target_shirt = $item[blessed rustproof +2 gray dragon scale mail];
@@ -207,13 +167,13 @@ boolean LX_steelOrgan()
 	{
 		return false;
 	}
-	if($classes[Ed, Gelatinous Noob, Vampyre] contains my_class())
+	if($classes[Ed the Undying, Gelatinous Noob, Vampyre] contains my_class())
 	{
 		auto_log_info(my_class() + " can not use a Steel Organ, turning off setting.", "blue");
 		set_property("auto_getSteelOrgan", false);
 		return false;
 	}
-	if((auto_my_path() == "Nuclear Autumn") || (auto_my_path() == "License to Adventure"))
+	if(in_nuclear() || in_lta())
 	{
 		auto_log_info("You could get a Steel Organ for aftercore, but why? We won't help with this deviant and perverse behavior. Turning off setting.", "blue");
 		set_property("auto_getSteelOrgan", false);
@@ -238,10 +198,8 @@ boolean LX_steelOrgan()
 		auto_log_info("I am hungry for some steel.", "blue");
 	}
 
-	if(have_effect($effect[items.enh]) == 0)
-	{
-		auto_sourceTerminalEnhance("items");
-	}
+	// typically getting steel organ means this is a long run, might as well use all options to get +item as sources refresh each day
+	provideItem(567, $location[The Laugh Floor], true);
 
 	if(get_property("questM10Azazel") == "unstarted")
 	{
@@ -391,12 +349,11 @@ boolean LX_guildUnlock()
 	{
 		return false;
 	}
-	if(auto_my_path() == "Nuclear Autumn" || in_pokefam())
+	if(in_nuclear() || in_pokefam() || in_robot())
 	{
 		return false;
 	}
-	if (!($strings[Picky, Community Service, Low Key Summer] contains auto_my_path())
-		&& get_property('auto_skipUnlockGuild').to_boolean())
+	if(!(in_picky() || in_lowkeysummer()) && get_property('auto_skipUnlockGuild').to_boolean() && !(my_primestat() == $stat[Moxie] && auto_haveTearawayPants()))
 	{
 		return false;
 	}
@@ -404,43 +361,38 @@ boolean LX_guildUnlock()
 	{
 		return false;	//muscle classes cannot unlock guild in grey goo
 	}
-	auto_log_info("Let's unlock the guild.", "green");
 
 	string pref;
 	location loc = $location[None];
 	item goal = $item[none];
+	if(my_primestat() == $stat[Moxie] && auto_haveTearawayPants())
+	{
+		//Can bypass moxie test if we have the Tearaway Pants
+		if(autoForceEquip($item[Tearaway Pants]))
+		{
+			if (internalQuestStatus("questG08Moxie") < 1)
+			{
+				visit_url("guild.php?place=challenge");
+			}
+			return true;
+		}
+	}
 	switch(my_primestat())
 	{
-		case $stat[Muscle] :
-			set_property("choiceAdventure111", "3");//Malice in Chains -> Plot a cunning escape
-			set_property("choiceAdventure113", "2");//Knob Goblin BBQ -> Kick the chef
-			set_property("choiceAdventure118", "2");//When Rocks Attack -> "Sorry, gotta run."
-			set_property("choiceAdventure120", "4");//Ennui is Wasted on the Young -> "Since you\'re bored, you\'re boring. I\'m outta here."
-			set_property("choiceAdventure543", "1");//Up In Their Grill -> Grab the sausage, so to speak. I mean... literally.
+		case $stat[Muscle]:
 			pref = "questG09Muscle";
 			loc = $location[The Outskirts of Cobb\'s Knob];
 			goal = $item[11-Inch Knob Sausage];
 			break;
 		case $stat[Mysticality]:
-			set_property("choiceAdventure115", "1");//Oh No, Hobo -> Give him a beating
-			set_property("choiceAdventure116", "4");//The Singing Tree (Rustling) -> "No singing, thanks."
-			set_property("choiceAdventure117", "1");//Trespasser -> Tackle him
-			set_property("choiceAdventure114", "2");//The Baker\'s Dilemma -> "Sorry, I\'m busy right now."
-			set_property("choiceAdventure544", "1");//A Sandwich Appears! -> sudo exorcise me a sandwich
 			pref = "questG07Myst";
 			loc = $location[The Haunted Pantry];
 			goal = $item[Exorcised Sandwich];
 			break;
 		case $stat[Moxie]:
 			goal = equipped_item($slot[pants]);
-			set_property("choiceAdventure108", "4");//Aww, Craps -> Walk Away
-			set_property("choiceAdventure109", "1");//Dumpster Diving -> Punch the hobo
-			set_property("choiceAdventure110", "4");//The Entertainer -> Introduce them to avant-garde
-			set_property("choiceAdventure112", "2");//Please, Hammer -> "Sorry, no time."
-			set_property("choiceAdventure121", "2");//Under the Knife -> Umm, no thanks. Seriously.
-			set_property("choiceAdventure542", "1");//Now\'s Your Pants! I Mean... Your Chance! -> Yoink
 			pref = "questG08Moxie";
-			if (internalQuestStatus(pref) < 1)
+			if(internalQuestStatus(pref) < 1)
 			{
 				loc = $location[The Sleazy Back Alley];
 			}
@@ -463,7 +415,9 @@ boolean LX_guildUnlock()
 			return false;
 		}
 
-		autoAdv(1, loc);
+		auto_log_info("Let's unlock the guild.", "green");
+
+		autoAdv(loc);
 		if (internalQuestStatus(pref) == 1)
 		{
 			visit_url("guild.php?place=challenge");
@@ -475,7 +429,7 @@ boolean LX_guildUnlock()
 
 boolean startArmorySubQuest()
 {
-	if(in_koe() || auto_my_path() == "Nuclear Autumn")
+	if(in_koe() || in_nuclear())
 	{
 		//will unlock the zone but does not actually start the quest. also currently not tracked by mafia so we will think the zone is unavailable.
 		if(item_amount($item[Hypnotic Breadcrumbs]) > 0)
@@ -510,26 +464,6 @@ boolean finishArmorySideQuest()
 	return internalQuestStatus("questM25Armorer") > 4;
 }
 
-boolean LX_armorySideQuest()
-{
-	//do the quest [Lending a Hand (and a Foot)] and unlock [madeline's baking supply] store
-	//step2 = need to kill the cake lord
-	//step3 = killed the cake lord
-	//step4 = clicked through the mandatory noncombat pages after the cake lord was killed
-	startArmorySubQuest();							//always start the quest to unlock the zone. costs no adv
-	if(finishArmorySideQuest()) return true;		//always finish the quest if possible. unlocks a shop.
-
-	if(!get_property("auto_doArmory").to_boolean())		//post setting indicating we should do this quest this ascension
-	{
-		return false;
-	}	
-	if(internalQuestStatus("questM25Armorer") > -1 && internalQuestStatus("questM25Armorer") < 4)
-	{
-		return autoAdv($location[Madness Bakery]);
-	}
-	return false;
-}
-
 boolean startMeatsmithSubQuest()
 {
 	if(in_koe())
@@ -540,7 +474,7 @@ boolean startMeatsmithSubQuest()
 	{
 		return false;	//quest already started
 	}
-	if(auto_my_path() == "Nuclear Autumn")
+	if(in_nuclear())
 	{
 		if(item_amount($item[Bone With a Price Tag On It]) > 0)
 		{
@@ -571,24 +505,6 @@ boolean finishMeatsmithSubQuest()
 	return false;
 }
 
-boolean LX_meatsmithSubQuest()
-{
-	//do meatsmith optional subquest.
-	if(startMeatsmithSubQuest()) return true;		//always start the quest if available
-	if(finishMeatsmithSubQuest()) return true;		//always turn the quest in if possible
-	
-	if(internalQuestStatus("questM23Meatsmith") != 0)
-	{
-		return false;	
-	}
-	if(!get_property("auto_doMeatsmith").to_boolean())
-	{
-		return false;		//by default we do not want to do this quest.
-	}
-	
-	return autoAdv($location[The Skeleton Store]);
-}
-
 void considerGalaktikSubQuest()
 {
 	//by default we do not do doc galaktik quest. user can manually enable it via gui for this current ascension.
@@ -614,7 +530,7 @@ void considerGalaktikSubQuest()
 	{
 		return;		//galaktik is unavailable in kingdom of exploathing
 	}
-	if(my_class() == $class[Vampyre] || in_plumber())
+	if(in_darkGyffte() || in_plumber())
 	{
 		return;		//these classes cannot use galaktik restorers.
 	}
@@ -647,7 +563,7 @@ boolean startGalaktikSubQuest()
 	{
 		return false;	//quest already started
 	}
-	if(auto_my_path() == "Nuclear Autumn" || in_koe())
+	if(in_nuclear() || in_koe())
 	{
 		//will unlock the zone but does not actually start the quest. also currently not tracked by mafia so we will think the zone is unavailable.
 		if(item_amount($item[Map to a Hidden Booze Cache]) > 0)
@@ -681,7 +597,6 @@ boolean finishGalaktikSubQuest()
 boolean LX_galaktikSubQuest()
 {
 	//do doc galaktik optional subquest.
-	if(startGalaktikSubQuest()) return true;	//always start the quest if available
 	if(finishGalaktikSubQuest()) return true;	//always turn the quest in if possible
 	considerGalaktikSubQuest();					//if allowed will automatically enable the quest in some cases
 	
@@ -694,23 +609,37 @@ boolean LX_galaktikSubQuest()
 	{
 		return false;		//by default we do not want to do this quest.
 	}
-	
+	if(startGalaktikSubQuest()) return true;	//always start the quest if available
+
 	return autoAdv($location[The Overgrown Lot]);
+}
+
+boolean LX_doingPirates() {
+	return in_lowkeysummer(); //we are only doing pirates in that path now
 }
 
 boolean LX_pirateOutfit() {
 	if (get_property("lastIslandUnlock").to_int() < my_ascensions()) {
 		return LX_islandAccess();
 	}
-	if (possessEquipment($item[peg key]) && !in_hardcore()) {
-		// if we have the key, just pull any outfit parts we are still missing
-		foreach _, it in outfit_pieces("Swashbuckling Getup") {
-			pullXWhenHaveY(it, 1, 0);
+	if (in_lowkeysummer() && !in_hardcore()) {
+		// in_lowkeysummer() means that turns are being spent in the Cove first which makes this worth doing
+		// pull book to learn insults ahead of starting beerpong quest. saves at least however many fights on the way to gathering the outfit
+		// plus lets you keep trying to gather the outfit while learning insults, can save the pulls for missing pieces that come next
+		pullXWhenHaveY($item[The Big Book Of Pirate Insults], 1, 0);
+		//want 6 insults to try but learning another finding Cap'm Caronch can still improve chances more
+		boolean preGatheringInsults = item_amount($item[The Big Book Of Pirate Insults]) > 0 && (numPirateInsults() < 6);
+		
+		if (possessEquipment($item[peg key]) && !preGatheringInsults) {
+			// if we have the key and insults, just pull any outfit parts we are still missing
+			foreach _, it in outfit_pieces("Swashbuckling Getup") {
+				pullXWhenHaveY(it, 1, 0);
+			}
 		}
 	}
 	if (possessOutfit("Swashbuckling Getup")) {
 		if (possessOutfit("Swashbuckling Getup", true) && item_amount($item[The Big Book Of Pirate Insults]) == 0 && my_meat() > npc_price($item[The Big Book Of Pirate Insults])) {
-			buyUpTo(1, $item[The Big Book Of Pirate Insults]);
+			auto_buyUpTo(1, $item[The Big Book Of Pirate Insults]);
 		}
 		return false;
 	}
@@ -858,12 +787,15 @@ boolean LX_joinPirateCrew() {
 	if (internalQuestStatus("questM12Pirate") > 4) {
 		return false;
 	}
+	if (internalQuestStatus("questL12War") == 1) {
+		return false;
+	}
 	if (!possessOutfit("Swashbuckling Getup", true)) {
 		auto_log_info("Can not equip, or do not have the Swashbuckling Getup. Delaying.", "red");
 		return false;
 	}
 	if (item_amount($item[The Big Book Of Pirate Insults]) == 0 && my_meat() > npc_price($item[The Big Book Of Pirate Insults])) {
-		buyUpTo(1, $item[The Big Book Of Pirate Insults]);
+		auto_buyUpTo(1, $item[The Big Book Of Pirate Insults]);
 	}
 	if (internalQuestStatus("questM12Pirate") == -1 || internalQuestStatus("questM12Pirate") == 1 || internalQuestStatus("questM12Pirate") == 3) {
 		auto_log_info("Findin' the Cap'n", "blue");
@@ -882,34 +814,66 @@ boolean LX_joinPirateCrew() {
 			auto_log_info("We have the Frat Boy Ensemble, begin infiltration!", "blue");
 			outfit("Frat Boy Ensemble");
 			infiltrationReady = true;
-		} else if (possessEquipment($item[mullet wig]) && item_amount($item[briefcase]) > 0) {
+		} else if (possessEquipment($item[mullet wig]) && auto_can_equip($item[mullet wig]) && item_amount($item[briefcase]) > 0) {
 			auto_log_info("We have a mullet wig and a briefcase, begin infiltration!", "blue");
 			autoForceEquip($item[mullet wig]);
 			infiltrationReady = true;
-		} else if (possessEquipment($item[frilly skirt]) && item_amount($item[hot wing]) > 2) {
+		} else if (possessEquipment($item[frilly skirt]) && auto_can_equip($item[frilly skirt]) && item_amount($item[hot wing]) > 2) {
 			auto_log_info("We have hot wings and a frilly skirt, begin infiltration!", "blue");
 			autoForceEquip($item[frilly skirt]);
 			infiltrationReady = true;
 		}
-
-		if (!infiltrationReady) {
-			if (item_amount($item[hot wing]) > 2) {
-				if (knoll_available() && my_meat() > npc_price($item[frilly skirt])) {
-					auto_log_info("We have hot wings but no frilly skirt. Lets go shopping!", "blue");
-					buyUpTo(1, $item[frilly skirt]);
-					autoForceEquip($item[frilly skirt]);
-					infiltrationReady = true;
-				} else {
-					auto_log_info("We have hot wings but no frilly skirt. Lets go to the gym!", "blue");
-					if (internalQuestStatus("questM01Untinker") == -1) {
-						visit_url("place.php?whichplace=forestvillage&preaction=screwquest&action=fv_untinker_quest");
-					}
-					if (autoAdv($location[The Degrassi Knoll Gym])) {
-						return true;
+		
+		if (!infiltrationReady)	{
+			boolean mightGetHotwings() {
+				return (internalQuestStatus("questL06Friar") < 2 || (in_lowkeysummer() && !possessEquipment($item[Demonic key])));
+			}
+			boolean mightCatburgle = (item_amount($item[hot wing]) > 2 || mightGetHotwings()) && (knoll_available() || possessEquipment($item[frilly skirt]));
+			
+			if (!infiltrationReady && !mightCatburgle) {
+				if (item_amount($item[briefcase]) > 0) {
+					// missing only mullet wig and not expecting Catburgle
+					if (pullXWhenHaveY($item[mullet wig], 1, 0) && autoForceEquip($item[mullet wig])) {
+						infiltrationReady = true;
 					}
 				}
 			}
-			// TODO: add handling for the other methods here? Do we care about anything other than Catburgling?
+
+			if (!infiltrationReady) {
+				if (item_amount($item[hot wing]) > 2 && auto_can_equip($item[frilly skirt])) {
+					if (knoll_available() && my_meat() > npc_price($item[frilly skirt])) {
+						auto_log_info("We have hot wings but no frilly skirt. Lets go shopping!", "blue");
+						auto_buyUpTo(1, $item[frilly skirt]);
+						autoForceEquip($item[frilly skirt]);
+						infiltrationReady = true;
+					} else {
+						//frilly skirt is 25% drop from 1 of 3 gym monsters, try pulling it before spending adventures
+						if (pullXWhenHaveY($item[frilly skirt], 1, 0) && autoForceEquip($item[frilly skirt])) {
+							infiltrationReady = true;
+						}
+						else {
+							auto_log_info("We have hot wings but no frilly skirt. Lets go to the gym!", "blue");
+							if (internalQuestStatus("questM01Untinker") == -1) {
+								visit_url("place.php?whichplace=forestvillage&preaction=screwquest&action=fv_untinker_quest");
+							}
+							if (autoAdv($location[The Degrassi Knoll Gym])) {
+								return true;
+							}
+						}
+					}
+				}
+				else if (possessEquipment($item[mullet wig]) && auto_can_equip($item[mullet wig])) {
+					// easiest to get or wait to get a briefcase
+					// todo modify banish list to not banish pygmy headhunters if wanting a briefcase in hardcore?
+					if (!mightCatburgle && internalQuestStatus("questL04Bat") >= 1 && get_property("hiddenOfficeProgress").to_int() >= 6) {	
+						// briefcase zones already finished and not expecting Catburgle then try to pull it
+						if (pullXWhenHaveY($item[briefcase], 1, 0) && autoForceEquip($item[mullet wig])) {
+							infiltrationReady = true;
+						}
+					}
+				}
+				// else: todo get frat boy ensemble if possible. may not be possible if frat house is (Bombed Back to the Stone Age)
+			}
 		}
 
 		if (infiltrationReady) {
@@ -1018,23 +982,76 @@ boolean LX_pirateQuest() {
 	return false;
 }
 
-item[class] epicWeapons;
-epicWeapons[$class[Seal Clubber]] = $item[Hammer of Smiting];
-epicWeapons[$class[Turtle Tamer]] = $item[Chelonian Morningstar];
-epicWeapons[$class[Pastamancer]] = $item[Greek Pasta Spoon of Peril];
-epicWeapons[$class[Sauceror]] = $item[17-alarm Saucepan];
-epicWeapons[$class[Disco Bandit]] = $item[Shagadelic Disco Banjo];
-epicWeapons[$class[Accordion Thief]] = $item[Squeezebox of the Ages];
-// usage: item epicWeapon = epicWeapons[my_class()];
+boolean LX_unlockKnobMenagerie()
+{
+	if(item_amount($item[Cobb\'s Knob Menagerie key]) > 0)
+	{
+		if(item_amount($item[Cobb\'s Knob Lab Key]) > 0)
+		{
+			return false;	//already unlocked
+		}
+		else
+		{
+			//if Menagerie key was somehow obtained outside of the lab, lab key is also needed to access Menagerie
+			//lab key should be obtained during the level 5 quest or ultimately from the king
+			if(L5_slayTheGoblinKing())
+			{
+				return true;
+			}
+			auto_log_warning("Unable to finish the King of Cobb's Knob Quest yet to obtain the Cobb's Knob lab key, so can't unlock the Menagerie.");
+			return false;
+		}
+	}
+	if(item_amount($item[Cobb\'s Knob Lab Key]) == 0)
+	{
+		return false;	//can't adventure in the lab for the Menagerie key
+	}
+	if(in_lowkeysummer() && $location[Cobb\'s Knob Laboratory].turns_spent == 13)
+	{
+		//should probably have already gotten the key on the way to getting the path key
+		//if backtracking to unlock the menagerie refresh once to double check
+		cli_execute("refresh inv");
+		if(item_amount($item[Cobb\'s Knob Menagerie key]) > 0)
+		{
+			return false;	//already unlocked
+		}
+	}
+	if($location[Cobb\'s Knob Laboratory].turns_spent > 20)
+	{
+		cli_execute("refresh inv");
+		if (item_amount($item[Cobb\'s Knob Menagerie key]) == 0)
+		{
+			abort("Have been spending too many adventures in Cobb's Knob Laboratory trying to get Menagerie key. Either very bad luck or something wrong is going on.");
+		}
+	}
+	auto_log_info("Looking for the Cobb's Knob Menagerie key.", "blue");
+	return autoAdv(1, $location[Cobb\'s Knob Laboratory]);
+}
 
-item[class] starterWeapons;
-starterWeapons[$class[Seal Clubber]] = $item[seal-clubbing club];
-starterWeapons[$class[Turtle Tamer]] = $item[turtle totem];
-starterWeapons[$class[Pastamancer]] = $item[pasta spoon];
-starterWeapons[$class[Sauceror]] = $item[saucepan];
-starterWeapons[$class[Disco Bandit]] = $item[disco ball];
-starterWeapons[$class[Accordion Thief]] = $item[stolen accordion];
-// usage: item starterWeapon = starterWeapons[my_class()];
+static item[class] epicWeapons = {
+	$class[Seal Clubber] : $item[Hammer of Smiting],
+	$class[Turtle Tamer] : $item[Chelonian Morningstar],
+	$class[Pastamancer] : $item[Greek Pasta Spoon of Peril],
+	$class[Sauceror] : $item[17-alarm Saucepan],
+	$class[Disco Bandit] : $item[Shagadelic Disco Banjo],
+	$class[Accordion Thief] : $item[Squeezebox of the Ages]
+}; // usage: item epicWeapon = epicWeapons[my_class()];
+
+static item[class] starterWeapons = {
+	$class[Seal Clubber] : $item[seal-clubbing club],
+	$class[Turtle Tamer] : $item[turtle totem],
+	$class[Pastamancer] : $item[pasta spoon],
+	$class[Sauceror] : $item[saucepan],
+	$class[Disco Bandit] : $item[disco ball],
+	$class[Accordion Thief] : $item[stolen accordion]
+}; // usage: item starterWeapon = starterWeapons[my_class()];
+
+boolean tomb_already_found()
+{
+	//the tomb only appears once when adv in the unquiet garves. afterwards it appears on the map instead
+	string page = visit_url("place.php?whichplace=cemetery");
+	return page.contains_text("place.php?whichplace=cemetery&action=cem_advtomb");
+}
 
 boolean LX_acquireEpicWeapon()
 {
@@ -1081,6 +1098,10 @@ boolean LX_acquireEpicWeapon()
 	}
 
 	addToMaximize("-equip " + starterWeapons[my_class()].to_string());
+	if(tomb_already_found())
+	{
+		return autoAdvBypass("place.php?whichplace=cemetery&action=cem_advtomb");
+	}
 
 	return autoAdv($location[The Unquiet Garves]);
 }
@@ -1098,7 +1119,7 @@ boolean LX_NemesisQuest()
 void houseUpgrade()
 {
 	//function for upgrading your dwelling.
-	if(isActuallyEd() || my_class() == $class[Vampyre] || auto_my_path() == "Nuclear Autumn")
+	if(isActuallyEd() || in_darkGyffte() || in_nuclear() || in_wereprof() || in_robot())
 	{
 		return;		//paths where dwelling is locked
 	}

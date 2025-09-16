@@ -11,7 +11,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 
 	if (round == 0)
 	{
-		set_property("auto_combatHandler", "");
+		remove_property("_auto_combatState");
 		if (get_property("_edDefeats").to_int() == 0)
 		{
 			set_property("auto_edCombatCount", 1 + get_property("auto_edCombatCount").to_int());
@@ -40,7 +40,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 
 	set_property("auto_edCombatRoundCount", 1 + get_property("auto_edCombatRoundCount").to_int());
 
-	if ($locations[Hippy Camp, The Outskirts Of Cobb\'s Knob, The Spooky Forest] contains my_location())
+	if ($locations[The Hippy Camp, The Outskirts Of Cobb\'s Knob, The Spooky Forest] contains my_location())
 	{
 		if (my_mp() < mp_cost($skill[Fist Of The Mummy]) && get_property("_edDefeats").to_int() < 2)
 		{
@@ -64,14 +64,18 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		abort("Somehow got to 60 rounds.... aborting");
 	}
 
-	string combatState = get_property("auto_combatHandler");
-	string edCombatState = get_property("auto_edCombatHandler");
-
 	if($monsters[LOV Enforcer, LOV Engineer, LOV Equivocator] contains enemy)
 	{
 		set_property("auto_edStatus", "dying");
 	}
 
+	if(auto_backupTarget() && enemy != get_property("lastCopyableMonster").to_monster() && canUse($skill[Back-Up to your Last Enemy]))
+	{
+		handleTracker(enemy, $skill[Back-Up to your Last Enemy], "auto_replaces");
+		handleTracker(get_property("lastCopyableMonster").to_monster(), $skill[Back-Up to your Last Enemy], "auto_copies");
+		return useSkill($skill[Back-Up to your Last Enemy]);	
+	}
+	
 	if(have_effect($effect[Temporary Amnesia]) > 0)
 	{
 		return "attack with weapon";
@@ -111,64 +115,43 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		}
 	}
 
-	if(have_equipped($item[Protonic Accelerator Pack]) && isGhost(enemy))
+	//iotm back item and the enemies it spawns (free fights) can be killed using special skills to get extra XP and item drops
+	if(have_equipped($item[Protonic Accelerator Pack]) && isGhost(enemy) && !combat_status_check("skipGhostbusting"))
 	{
-		if(canUse($skill[Summon Love Gnats]))
+		//shoot ghost 3 times provoking retaliation, then trap ghost skill unlocks which instawins combat.
+		skill stunner = getStunner(enemy);
+		if(stunner != $skill[none])
 		{
-			return useSkill($skill[Summon Love Gnats]);
+			combat_status_add("stunned");
+			return useSkill(stunner);
 		}
 
-		if(auto_have_skill($skill[Shoot Ghost]) && (my_mp() > mp_cost($skill[Shoot Ghost])) && !contains_text(edCombatState, "shootghost3") && !contains_text(edCombatState, "trapghost"))
+		//shots_takens tracks how many times we used [shoot ghost] skill this combat. it is reset in combat initialize
+		int shots_takens = usedCount($skill[Shoot Ghost]);
+		if(canUse($skill[Shoot Ghost], false) && shots_takens < 3)
 		{
-			boolean shootGhost = true;
-			if(contains_text(edCombatState, "shootghost2"))
+			float survive_needed = 3.05 - shots_takens.to_float();
+			if(canSurvive(survive_needed))
 			{
-				if((damageReceived * 1.075) > my_hp())
-				{
-					shootGhost = false;
-				}
-				else
-				{
-					set_property("auto_edCombatHandler", edCombatState + "(shootghost3)");
-				}
-			}
-			else if(contains_text(edCombatState, "shootghost1"))
-			{
-				if((damageReceived * 2.05) > my_hp())
-				{
-					shootGhost = false;
-				}
-				else
-				{
-					set_property("auto_edCombatHandler", edCombatState + "(shootghost2)");
-				}
+				markAsUsed($skill[Shoot Ghost]);		//needs to be manually done for skills with a use limit that is not 1
+				return useSkill($skill[Shoot Ghost], false);
 			}
 			else
 			{
-				set_property("auto_edCombatHandler", edCombatState + "(shootghost1)");
-			}
-
-			if(shootGhost)
-			{
-				return "skill " + $skill[Shoot Ghost];
-			}
-			else
-			{
-				edCombatState += "(trapghost)(love stinkbug)";
-				set_property("auto_edCombatHandler", edCombatState);
+				combat_status_add("skipGhostbusting");
 			}
 		}
-		if(!contains_text(edCombatState, "trapghost") && auto_have_skill($skill[Trap Ghost]) && (my_mp() > mp_cost($skill[Trap Ghost])) && contains_text(edCombatState, "shootghost3"))
+		
+		if(canUse($skill[Trap Ghost]) && shots_takens == 3)
 		{
 			auto_log_info("Busting makes me feel good!!", "green");
-			set_property("auto_edCombatHandler", edCombatState + "(trapghost)");
-			return "skill " + $skill[Trap Ghost];
+			return useSkill($skill[Trap Ghost]);
 		}
 	}
 
 	//use industrial fire extinguisher zone specific skills
 	string extinguisherSkill = auto_FireExtinguisherCombatString(my_location());
-	if(extinguisherSkill != "")
+	if(extinguisherSkill != "" && have_equipped($item[industrial fire extinguisher]))
 	{
 		handleTracker(enemy, to_skill(substring(extinguisherSkill, 6)), "auto_otherstuff");
 		return extinguisherSkill;
@@ -176,45 +159,11 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 
 	# Instakill handler
 	boolean doInstaKill = true;
-	if($monsters[Lobsterfrogman, Ninja Snowman Assassin] contains enemy)
+	if($monsters[Lobsterfrogman] contains enemy)
 	{
 		if(auto_have_skill($skill[Digitize]) && (get_property("_sourceTerminalDigitizeMonster") != enemy))
 		{
 			doInstaKill = false;
-		}
-	}
-
-	if(instakillable(enemy) && !isFreeMonster(enemy) && doInstaKill)
-	{
-		if(!contains_text(combatState, "batoomerang") && (item_amount($item[Replica Bat-oomerang]) > 0))
-		{
-			if(get_property("auto_batoomerangDay").to_int() != my_daycount())
-			{
-				set_property("auto_batoomerangDay", my_daycount());
-				set_property("auto_batoomerangUse", 0);
-			}
-			if(get_property("auto_batoomerangUse").to_int() < 3)
-			{
-				set_property("auto_batoomerangUse", get_property("auto_batoomerangUse").to_int() + 1);
-				set_property("auto_combatHandler", combatState + "(batoomerang)");
-				handleTracker(enemy, $item[Replica Bat-oomerang], "auto_instakill");
-				loopHandlerDelayAll();
-				return "item " + $item[Replica Bat-oomerang];
-			}
-		}
-
-		if(!contains_text(combatState, "jokesterGun") && (equipped_item($slot[Weapon]) == $item[The Jokester\'s Gun]) && !get_property("_firedJokestersGun").to_boolean() && auto_have_skill($skill[Fire the Jokester\'s Gun]))
-		{
-			set_property("auto_combatHandler", combatState + "(jokesterGun)");
-			handleTracker(enemy, $skill[Fire the Jokester\'s Gun], "auto_instakill");
-			loopHandlerDelayAll();
-			return "skill" + $skill[Fire the Jokester\'s Gun];
-		}
-
-		if (canUse($skill[Slay the Dead]) && enemy.phylum == $phylum[undead])
-		{
-			// instakills Undead and reduces evilness in Cyrpt zones.
-			return useSkill($skill[Slay the Dead]);
 		}
 	}
 
@@ -284,23 +233,25 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		return useItem($item[chaos butterfly]);
 	}
 
-	if(enemy == $monster[dirty thieving brigand] && !contains_text(edCombatState, "curse of fortune")) {
-		if (item_amount($item[Ka Coin]) > 0 && canUse($skill[Curse Of Fortune]) && my_hp() > expected_damage() + 15) {
+	if(enemy == $monster[dirty thieving brigand] && canUse($skill[Curse Of Fortune]))
+	{
+		if (item_amount($item[Ka Coin]) > 0 && my_hp() > expected_damage() + 15)
+		{
 			// need to kill the monster without resurrecting to get the bonus meat drop so only use it if we have enough HP to survive a hit
-			set_property("auto_edCombatHandler", edCombatState + "(curse of fortune)");
 			set_property("auto_edStatus", "dying");
 			return useSkill($skill[Curse Of Fortune]);
-		} else {
-			// get a full heal, maybe we can Curse and kill after resurrection
+		}
+		else if(get_property("_edDefeats").to_int() == 0 && my_maxhp() > expected_damage() + 15)
+		{
+			// suicide to get a full heal, maybe we can Curse and kill after resurrection
 			set_property("auto_edStatus", "UNDYING!");
 		}
 	}
 
-	if (!contains_text(edCombatState, "curseofstench") && canUse($skill[Curse Of Stench]) && get_property("stenchCursedMonster").to_monster() != enemy && get_property("_edDefeats").to_int() < 3)
+	if (canUse($skill[Curse Of Stench]) && get_property("stenchCursedMonster").to_monster() != enemy && get_property("_edDefeats").to_int() < 3)
 	{
 		if(auto_wantToSniff(enemy, my_location()))
 		{
-			set_property("auto_edCombatHandler", combatState + "(curseofstench)");
 			handleTracker(enemy, $skill[Curse Of Stench], "auto_sniffs");
 			return useSkill($skill[Curse Of Stench]);
 		}
@@ -308,7 +259,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 
 	if(my_location() == $location[The Secret Council Warehouse])
 	{
-		if (!contains_text(edCombatState, "curseofstench") && canUse($skill[Curse Of Stench]) && get_property("stenchCursedMonster").to_monster() != enemy && get_property("_edDefeats").to_int() < 3)
+		if (canUse($skill[Curse Of Stench]) && get_property("stenchCursedMonster").to_monster() != enemy && get_property("_edDefeats").to_int() < 3)
 		{
 			boolean doStench = false;
 			#	Rememeber, we are looking to see if we have enough of the opposite item here.
@@ -333,7 +284,6 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 			}
 			if(doStench)
 			{
-				set_property("auto_edCombatHandler", combatState + "(curseofstench)");
 				handleTracker(enemy, $skill[Curse of Stench], "auto_sniffs");
 				return useSkill($skill[Curse Of Stench]);
 			}
@@ -342,7 +292,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 
 	if(my_location() == $location[The Smut Orc Logging Camp])
 	{
-		if (!contains_text(edCombatState, "curseofstench") && canUse($skill[Curse Of Stench]) && get_property("stenchCursedMonster").to_monster() != enemy && get_property("_edDefeats").to_int() < 3)
+		if (canUse($skill[Curse Of Stench]) && get_property("stenchCursedMonster").to_monster() != enemy && get_property("_edDefeats").to_int() < 3)
 		{
 			boolean doStench = false;
 			string stenched = to_lower_case(get_property("stenchCursedMonster"));
@@ -366,19 +316,19 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 
 			if(doStench)
 			{
-				set_property("auto_edCombatHandler", combatState + "(curseofstench)");
 				handleTracker(enemy, $skill[Curse of Stench], "auto_sniffs");
 				return useSkill($skill[Curse Of Stench]);
 			}
 		}
 	}
 
-	if(!contains_text(combatState, "yellowray") && auto_wantToYellowRay(enemy, my_location()))
+	//yellowray instantly kills the enemy and makes them drop all items they can drop.
+	if(!combat_status_check("yellowray") && auto_wantToYellowRay(enemy, my_location()))
 	{
-		string combatAction = yellowRayCombatString(enemy, true);
+		string combatAction = yellowRayCombatString(enemy, true, $monsters[bearpig topiary animal, elephant (meatcar?) topiary animal, spider (duck?) topiary animal, Knight (Snake)] contains enemy);
 		if(combatAction != "")
 		{
-			set_property("auto_combatHandler", combatState + "(yellowray)");
+			combat_status_add("yellowray");
 			if(index_of(combatAction, "skill") == 0)
 			{
 				handleTracker(enemy, to_skill(substring(combatAction, 6)), "auto_yellowRays");
@@ -403,36 +353,88 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		}
 	}
 
-	if(!contains_text(combatState, "banishercheck") && auto_wantToBanish(enemy, my_location()))
+	if(!combat_status_check("banishercheck") && auto_wantToBanish(enemy, my_location()))
 	{
-		string combatAction = banisherCombatString(enemy, my_location(), true);
-		if(combatAction != "")
+		string banishAction = banisherCombatString(enemy, my_location(), true);
+		if(banishAction != "")
 		{
-			set_property("auto_combatHandler", combatState + "(banisher)");
-			if(index_of(combatAction, "skill") == 0)
+			auto_log_info("Looking at banishAction: " + banishAction, "green");
+			combat_status_add("banisher");
+			if(index_of(banishAction, "skill") == 0)
 			{
-				handleTracker(enemy, to_skill(substring(combatAction, 6)), "auto_banishes");
+				handleTracker(enemy, to_skill(substring(banishAction, 6)), "auto_banishes");
 			}
-			else if(index_of(combatAction, "item") == 0)
+			else if(index_of(banishAction, "item") == 0)
 			{
-				handleTracker(enemy, to_item(substring(combatAction, 5)), "auto_banishes");
+				if(contains_text(banishAction, ", none"))
+				{
+					int commapos = index_of(banishAction, ", none");
+					handleTracker(enemy, to_item(substring(banishAction, 5, commapos)), "auto_banishes");
+				}
+				else
+				{
+					handleTracker(enemy, to_item(substring(banishAction, 5)), "auto_banishes");
+				}
 			}
 			else
 			{
-				auto_log_warning("Unable to track banisher behavior: " + combatAction, "red");
+				auto_log_warning("Unable to track banisher behavior: " + banishAction, "red");
 			}
-			return combatAction;
+			return banishAction;
 		}
-		set_property("auto_combatHandler", combatState + "(banishercheck)");
-		combatState += "(banishercheck)";
+		//we wanted to banish an enemy and failed. set a property so we do not bother trying in subsequent rounds
+		combat_status_add("banishercheck");
 	}
 
-	if (!contains_text(combatState, "replacercheck") && canReplace(enemy) && auto_wantToReplace(enemy, my_location()))
+	// Free run from monsters we want to banish but are unable to, or monsters on the free run list
+	if(!combat_status_check("freeruncheck") && (auto_wantToFreeRun(enemy, my_location()) || auto_wantToBanish(enemy, my_location())))
+	{
+		string freeRunAction = freeRunCombatString(enemy, my_location(), true);
+		if(freeRunAction != "")
+		{
+			if (index_of(freeRunAction, "runaway familiar") == 0)
+			{
+				handleTracker(enemy, to_familiar(substring(freeRunAction, 17)), "auto_freeruns");
+				freeRunAction = "runaway";
+			}
+			else if (index_of(freeRunAction, "runaway item") == 0)
+			{
+				handleTracker(enemy, to_item(substring(freeRunAction, 13)), "auto_freeruns");
+				freeRunAction = "runaway";
+			}
+			else if(index_of(freeRunAction, "skill") == 0)
+			{
+				handleTracker(enemy, to_skill(substring(freeRunAction, 6)), "auto_freeruns");
+			}
+			else if(index_of(freeRunAction, "item") == 0)
+			{
+				if(contains_text(freeRunAction, ", none"))
+				{
+					int commapos = index_of(freeRunAction, ", none");
+					handleTracker(enemy, to_item(substring(freeRunAction, 5, commapos)), "auto_freeruns");
+				}
+				else
+				{
+					handleTracker(enemy, to_item(substring(freeRunAction, 5)), "auto_freeruns");
+				}
+			}
+			else
+			{
+				auto_log_warning("Unable to track runaway behavior: " + freeRunAction, "red");
+			}
+			return freeRunAction;
+		}
+
+		//we wanted to free run an enemy and failed. set a property so we do not bother trying in subsequent rounds
+		combat_status_add("freeruncheck");
+	}
+
+	if (!combat_status_check("replacercheck") && auto_wantToReplace(enemy, my_location()))
 	{
 		string combatAction = replaceMonsterCombatString(enemy, true);
 		if(combatAction != "")
 		{
-			set_property("auto_combatHandler", combatState + "(replacer)");
+			combat_status_add("replacer");
 			if(index_of(combatAction, "skill") == 0)
 			{
 				if (to_skill(substring(combatAction, 6)) == $skill[CHEAT CODE: Replace Enemy])
@@ -455,8 +457,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		{
 			auto_log_warning("Wanted a replacer but we can not find one.", "red");
 		}
-		set_property("auto_combatHandler", combatState + "(replacercheck)");
-		combatState += "(replacercheck)";
+		combat_status_add("replacercheck");
 	}
 
 	if (canUse($item[Disposable Instant Camera]) && $monsters[Bob Racecar, Racecar Bob] contains enemy)
@@ -479,12 +480,6 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		}
 	}
 
-	if (canUse($item[Cigarette Lighter]) && my_location() == $location[A Mob Of Zeppelin Protesters] && internalQuestStatus("questL11Ron") == 1 && get_property("auto_edStatus") == "dying")
-	{
-		return useItem($item[Cigarette Lighter]);
-		// insta-kills protestors and removes an additional 5-7 (optimal!)
-	}
-
 	if (canUse($item[Glark Cable]) && my_location() == $location[The Red Zeppelin] && internalQuestStatus("questL11Ron") == 3 && get_property("_glarkCableUses").to_int() < 5 && get_property("auto_edStatus") == "dying")
 	{
 		if($monsters[Man With The Red Buttons, Red Butler, Red Fox, Red Skeleton] contains enemy)
@@ -497,7 +492,10 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 	if (!get_property("edUsedLash").to_boolean() && canUse($skill[Lash of the Cobra]) && get_property("_edLashCount").to_int() < 30)
 	{
 		boolean doLash = false;
-
+		if(enemy == $monster[Shadow Slab])
+		{
+			doLash = true;
+		}
 		if((enemy == $monster[Big Wheelin\' Twins]) && !possessEquipment($item[Badge Of Authority]))
 		{
 			doLash = true;
@@ -538,7 +536,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		{
 			doLash = true;
 		}
-		if(((enemy == $monster[Toothy Sklelton]) || (enemy == $monster[Spiny Skelelton])) && (get_property("cyrptNookEvilness").to_int() > 26))
+		if(((enemy == $monster[Toothy Sklelton]) || (enemy == $monster[Spiny Skelelton])) && (get_property("cyrptNookEvilness").to_int() > 14 + cyrptEvilBonus(true)))
 		{
 			doLash = true;
 		}
@@ -572,7 +570,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 				doLash = true;
 			}
 		}
-		if ((my_location() == $location[Hippy Camp] || my_location() == $location[Wartime Hippy Camp]) && contains_text(enemy, "hippy") && my_level() >= 12)
+		if ((my_location() == $location[The Hippy Camp] || my_location() == $location[Wartime Hippy Camp]) && contains_text(enemy, "hippy") && my_level() >= 12)
 		{
 			if(!possessEquipment($item[Filthy Knitted Dread Sack]) || !possessEquipment($item[Filthy Corduroys]))
 			{
@@ -605,7 +603,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		{
 			doLash = true;
 		}
-		if((enemy == $monster[Spunky Princess]) && !possessEquipment($item[Titanium Assault Umbrella]))
+		if((enemy == $monster[Spunky Princess]) && !possessEquipment($item[Titanium Assault Umbrella]) && !possessEquipment($item[unbreakable umbrella]))
 		{
 			doLash = true;
 		}
@@ -643,15 +641,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		}
 	}
 
-	if (canUse($item[Tattered Scrap of Paper], false))
-	{
-		if($monsters[Bubblemint Twins, Bunch of Drunken Rats, Coaltergeist, Creepy Ginger Twin, Demoninja, Drunk Goat, Drunken Rat, Fallen Archfiend, Hellion, Knob Goblin Elite Guard, L imp, Mismatched Twins, Sabre-Toothed Goat, W imp] contains enemy)
-		{
-			return useItem($item[Tattered Scrap Of Paper], false);
-		}
-	}
-
-	if (!contains_text(edCombatState, "talismanofrenenutet") && canUse($item[Talisman of Renenutet]))
+	if (!combat_status_check("talismanofrenenutet") && canUse($item[Talisman of Renenutet]))
 	{
 		boolean doRenenutet = false;
 		if((enemy == $monster[Cabinet of Dr. Limpieza]) && ($location[The Haunted Laundry Room].turns_spent > 2))
@@ -692,23 +682,124 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 				doRenenutet = true;
 			}
 		}
+		if($monsters[Battlie Knight Ghost, Claybender Sorcerer Ghost, Dusken Raider Ghost, Space Tourist Explorer Ghost, Whatsian Commando Ghost] contains enemy)
+		{
+			if(item_amount($item[A-boo Clue]) < get_property("booPeakProgress").to_int()/30)
+			{
+				doRenenutet = true;
+			}
+		}
+		if($monsters[toothy sklelton,spiny skelelton] contains enemy)
+		{
+			if(my_location() == $location[The Defiled Nook] && item_amount($item[evil eye]) == 0) // lash didn't get it)
+			{
+				doRenenutet = true;
+			}
+		}
+		if($monsters[bearpig topiary animal,elephant (meatcar?) topiary animal,spider (duck?) topiary animal] contains enemy)
+		{
+			if(item_amount($item[rusty hedge trimmers]) == 0) // lash didn't get it
+			{
+				doRenenutet = true;
+			}
+		}
+		if($monsters[blue oyster cultist] contains enemy)
+		{
+			doRenenutet = true;
+		}
 		if(doRenenutet)
 		{
-			if (!contains_text(edCombatState, "curseofindecision") && canUse($skill[Curse Of Indecision]))
+			if (!combat_status_check("curseofindecision") && canUse($skill[Curse Of Indecision]))
 			{
-				set_property("auto_edCombatHandler", edCombatState + "(curseofindecision)");
+				combat_status_add("curseofindecision");
 				return useSkill($skill[Curse Of Indecision]);
 			}
-			set_property("auto_edCombatHandler", edCombatState + "(talismanofrenenutet)");
+			combat_status_add("talismanofrenenutet");
 			handleTracker(enemy, "auto_renenutet");
 			set_property("auto_edStatus", "dying");
 			return useItem($item[Talisman Of Renenutet]);
 		}
 	}
+	
+	if (canUse($item[Cigarette Lighter]) && my_location() == $location[A Mob Of Zeppelin Protesters] && internalQuestStatus("questL11Ron") == 1 && get_property("auto_edStatus") == "dying")
+	{
+		return useItem($item[Cigarette Lighter]);
+		// insta-kills protestors and removes an additional 5-7 (optimal!)
+	}
 
-	if(enemy == $monster[Pygmy Orderlies] && canUse($item[Short Writ of Habeas Corpus], false))
+	if(enemy == $monster[Pygmy Orderlies] && canUse($item[Short Writ of Habeas Corpus], false) && have_effect($effect[Everything Looks Green]) == 0)
 	{
 		return useItem($item[Short Writ of Habeas Corpus]);
+	}
+	
+	if(canUse($skill[Darts: Aim for the Bullseye]) && have_effect($effect[Everything Looks Red]) == 0 && dartELRcd() <= 40)
+	{
+		set_property("auto_instakillSource", "darts bullseye");
+		set_property("auto_instakillSuccess", true);
+		loopHandlerDelayAll();
+		return useSkill($skill[Darts: Aim for the Bullseye]);
+	}
+
+	// use cosmic bowling ball iotm
+	if(auto_bowlingBallCombatString(my_location(), true) != "" && !enemy.boss)
+	{
+		return 	auto_bowlingBallCombatString(my_location(), false);
+	}
+	
+	// prep avalanche if requested
+	if(canUse($skill[McHugeLarge Avalanche]) && get_property("auto_forceNonCombatSource") == "McHugeLarge left ski"
+		&& !get_property("auto_avalancheDeployed").to_boolean())
+	{
+		set_property("auto_avalancheDeployed", true);
+		return useSkill($skill[McHugeLarge Avalanche]);
+	}
+	// prep parka NC forcing if requested
+	if(canUse($skill[Launch spikolodon spikes]) && get_property("auto_forceNonCombatSource") == "jurassic parka"
+		&& !get_property("auto_parkaSpikesDeployed").to_boolean())
+	{
+		set_property("auto_parkaSpikesDeployed", true);
+		return useSkill($skill[Launch spikolodon spikes]);
+	}
+	
+	if(instakillable(enemy) && !isFreeMonster(enemy,my_location()) && doInstaKill)
+	{
+		if(!combat_status_check("batoomerang") && (item_amount($item[Replica Bat-oomerang]) > 0))
+		{
+			if(get_property("auto_batoomerangDay").to_int() != my_daycount())
+			{
+				set_property("auto_batoomerangDay", my_daycount());
+				set_property("auto_batoomerangUse", 0);
+			}
+			if(get_property("auto_batoomerangUse").to_int() < 3)
+			{
+				set_property("auto_batoomerangUse", get_property("auto_batoomerangUse").to_int() + 1);
+				combat_status_add("batoomerang");
+				handleTracker(enemy, $item[Replica Bat-oomerang], "auto_instakill");
+				loopHandlerDelayAll();
+				return "item " + $item[Replica Bat-oomerang];
+			}
+		}
+
+		if(canUse($item[shadow brick]) && (get_property("_shadowBricksUsed").to_int() < 13))
+		{
+			handleTracker(enemy, $item[shadow brick], "auto_instakill");
+			loopHandlerDelayAll();
+			return useItems($item[shadow brick], $item[none]);
+		}
+
+		if(!combat_status_check("jokesterGun") && (equipped_item($slot[Weapon]) == $item[The Jokester\'s Gun]) && !get_property("_firedJokestersGun").to_boolean() && auto_have_skill($skill[Fire the Jokester\'s Gun]))
+		{
+			combat_status_add("jokesterGun");
+			handleTracker(enemy, $skill[Fire the Jokester\'s Gun], "auto_instakill");
+			loopHandlerDelayAll();
+			return "skill" + $skill[Fire the Jokester\'s Gun];
+		}
+
+		if (canUse($skill[Slay the Dead]) && enemy.phylum == $phylum[undead])
+		{
+			// instakills Undead and reduces evilness in Cyrpt zones.
+			return useSkill($skill[Slay the Dead]);
+		}
 	}
 
 	if(get_property("auto_edStatus") == "UNDYING!")
@@ -718,9 +809,9 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		{
 			if((item_amount($item[Rock Band Flyers]) == 0) && (item_amount($item[Jam Band Flyers]) == 0))
 			{
-				if((!contains_text(combatState, "love stinkbug")) && get_property("lovebugsUnlocked").to_boolean())
+				if((!combat_status_check("love stinkbug")) && get_property("lovebugsUnlocked").to_boolean())
 				{
-					set_property("auto_combatHandler", combatState + "(love stinkbug2)");
+					combat_status_add("love stinkbug2");
 					return "skill " + $skill[Summon Love Stinkbug];
 				}
 			}
@@ -733,8 +824,40 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 
 		return "skill Mild Curse; repeat; ";
 	}
+	
+	//Everfull Dart Holder
+	if(have_equipped($item[Everfull Dart Holster]) && get_property("_dartsLeft").to_int() > 0)
+	{
+		return useSkill(dartSkill(), false);
+	}
+	
+	// Don't risk drop forcing if we've already been beaten up twice
+	if (get_property("_edDefeats").to_int()<2)
+	{
+		if(wantToForceDrop(enemy))
+		{
+			boolean polarVortexAvailable = canUse($skill[Fire Extinguisher: Polar Vortex], false) && auto_fireExtinguisherCharges() > 10;
+			boolean mildEvilAvailable = canUse($skill[Perpetrate Mild Evil],false) && get_property("_mildEvilPerpetrated").to_int() < 3;
+			// mild evil only can pick pocket. Use it before fire extinguisher
+			if(mildEvilAvailable)
+			{
+				handleTracker(enemy, $skill[Perpetrate Mild Evil], "auto_otherstuff");
+				return useSkill($skill[Perpetrate Mild Evil]);	
+			}
+			if(polarVortexAvailable)
+			{
+				handleTracker(enemy, $skill[Fire Extinguisher: Polar Vortex], "auto_otherstuff");
+				return useSkill($skill[Fire Extinguisher: Polar Vortex]);	
+			}
+		}
+	}
 
 	// Actually killing stuff starts here
+	if(canUse(auto_spoonCombatSkill()))
+	{
+		return useSkill(auto_spoonCombatSkill());
+	}
+    
 	if (my_location() == $location[The Secret Government Laboratory] && canUse($skill[Roar of the Lion], false))
 	{
 		if (canUse($skill[Storm Of The Scarab], false) && my_buffedstat($stat[Mysticality]) >= 60)
@@ -749,7 +872,7 @@ string auto_edCombatHandler(int round, monster enemy, string text)
 		return useSkill($skill[Storm Of The Scarab], false);
 	}
 
-	if ($locations[Hippy Camp, The Outskirts Of Cobb\'s Knob, The Spooky Forest, The Batrat and Ratbat Burrow, The Boss Bat\'s Lair, Cobb\'s Knob Harem] contains my_location() && canUse($skill[Fist Of The Mummy], false))
+	if ($locations[The Hippy Camp, The Outskirts Of Cobb\'s Knob, The Spooky Forest, The Batrat and Ratbat Burrow, The Boss Bat\'s Lair, Cobb\'s Knob Harem] contains my_location() && canUse($skill[Fist Of The Mummy], false))
 	{
 		return useSkill($skill[Fist Of The Mummy], false);
 	}

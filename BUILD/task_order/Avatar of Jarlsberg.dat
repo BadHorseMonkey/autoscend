@@ -1,19 +1,20 @@
 LM_jarlsberg
 LX_freeCombatsTask
+woods_questStart
+LX_unlockPirateRealm
 auto_breakfastCounterVisit
 chateauPainting
-LX_artistQuest
+LX_setWorkshed
 LX_galaktikSubQuest
-LX_armorySideQuest
-LX_meatsmithSubQuest
 L9_leafletQuest
 L5_findKnob
 L12_sonofaPrefix
 LX_burnDelay
-LX_dinseylandfillFunbucks
-LX_unlockPirateRealm
+LX_summonMonster
+L11_aridDesert	L11_hasUltrahydrated
 handleRainDoh
 L11_shenStartQuest
+auto_earlyRoutingHandling
 LX_guildUnlock
 LX_unlockDesert
 LX_lockPicking
@@ -51,7 +52,7 @@ L11_defeatEd
 L5_slayTheGoblinKing
 L4_batCave
 L3_tavern
-setSoftblockDelay	allowSoftblockDelay
-setSoftblockShen	allowSoftblockShen
 L13_towerAscent
+LX_lastChance
+auto_softBlockHandler
 LX_attemptPowerLevel

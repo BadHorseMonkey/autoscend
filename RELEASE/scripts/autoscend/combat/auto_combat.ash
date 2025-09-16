@@ -7,7 +7,7 @@ import <autoscend/combat/auto_combat_default_stage4.ash>			//default stage 4 = p
 import <autoscend/combat/auto_combat_default_stage5.ash>			//default stage 5 = kill
 import <autoscend/combat/auto_combat_awol.ash>						//path = avatar of west of loathing
 import <autoscend/combat/auto_combat_bees_hate_you.ash>				//path = bees hate you
-import <autoscend/combat/auto_combat_community_service.ash>			//path = community service
+import <autoscend/combat/auto_combat_fall_of_the_dinosaurs.ash>		//path = fall of the dinosaurs
 import <autoscend/combat/auto_combat_heavy_rains.ash>				//path = heavy rains
 import <autoscend/combat/auto_combat_dark_gyffte.ash>				//path = dark gyffte
 import <autoscend/combat/auto_combat_disguises_delimit.ash>			//path = disguises delimit
@@ -19,8 +19,12 @@ import <autoscend/combat/auto_combat_ocrs.ash>						//path = one crazy random su
 import <autoscend/combat/auto_combat_pete.ash>						//path = avatar of sneaky pete
 import <autoscend/combat/auto_combat_plumber.ash>					//path = path of the plumber
 import <autoscend/combat/auto_combat_the_source.ash>				//path = the source
+import <autoscend/combat/auto_combat_wereprofessor.ash>				//path = wereprofessor
 import <autoscend/combat/auto_combat_wildfire.ash>					//path = wildfire
+import <autoscend/combat/auto_combat_you_robot.ash>					//path = you, robot
+import <autoscend/combat/auto_combat_zombie_slayer.ash>				//path = zombie slayer
 import <autoscend/combat/auto_combat_quest.ash>						//quest specific handling
+import <autoscend/combat/auto_combat_mr2012.ash>					//2012 iotm and ioty handling
 
 //	Advance combat round, nothing happens.
 //	/goto fight.php?action=useitem&whichitem=1
@@ -37,6 +41,7 @@ void auto_combatInitialize(int round, monster enemy, string text)
 	{
 		case $monster[Government Agent]:
 			set_property("_portscanPending", false);
+			stop_counter("portscan.edu");
 			break;
 		case $monster[possessed wine rack]:
 			set_property("auto_wineracksencountered", get_property("auto_wineracksencountered").to_int() + 1);
@@ -51,11 +56,10 @@ void auto_combatInitialize(int round, monster enemy, string text)
 			break;
 	}
 
-	remove_property("auto_combatHandler");
+	remove_property("_auto_combatState");
 	remove_property("auto_funCombatHandler");				//ocrs specific tracker
 	remove_property("auto_funPrefix");						//ocrs specific tracker
 	set_property("auto_combatHandlerThunderBird", "0");
-	set_property("auto_combatHandlerFingernailClippers", "0");
 	set_property("_auto_combatTracker_MortarRound", -1);		//tracks which round we used Stuffed Mortar Shell in.
 	
 	//log some important info.
@@ -74,28 +78,40 @@ void auto_combatInitialize(int round, monster enemy, string text)
 
 string auto_combatHandler(int round, monster enemy, string text)
 {
-	if(round > 25)
+	if(round > defaultRoundLimit() && !($monsters[The Man, The Big Wisniewski] contains enemy))	//war bosses can go to round 50
 	{
-		abort("Some sort of problem occurred, it is past round 25 but we are still in non-gremlin combat...");
+		if (canUse($skill[Implode Universe]))
+		{
+			return useSkill($skill[Implode Universe], true);
+		}
+		abort("Some sort of problem occurred, it is past round "+defaultRoundLimit()+" but we are still in non-gremlin combat...");
 	}
+
+	if(round > 45)
+	{
+		abort("Some sort of problem occurred, it is past round 45 but we are still in a combat with a war boss...");
+	}
+
 	auto_combatInitialize(round, enemy, text);		//reset properties on round 0 of a new combat
 	string retval;
 	boolean blocked = contains_text(text, "(STUN RESISTED)");
 	set_property("auto_combatHP", my_hp());
 	set_property("auto_diag_round", round);
 
-	if(my_path() == "One Crazy Random Summer")
+	if(in_ocrs())
 	{
 		enemy = ocrs_combat_helper(text);
 		enemy = last_monster();
 	}
-	if(my_path() == "Avatar of West of Loathing")
+
+	if(in_awol())
 	{
 		awol_combat_helper(text);
 	}
+
 	if(in_pokefam())
 	{
-		if(svn_info("Ezandora-Helix-Fossil-branches-Release").revision > 0)
+		if(git_exists("Ezandora-Helix-Fossil"))
 		{
 		auto_log_info("Combat via Ezandora:", "green");
 		boolean ignore = cli_execute("Pocket Familiars");
@@ -103,7 +119,15 @@ string auto_combatHandler(int round, monster enemy, string text)
 		}
 	}
 
+	//If in Avant Guard, want to make sure the enemy is set correctly to the bodyguard
+	//If waffle has been used ignore and just use enemy as set in combat handler
+	if(in_avantGuard() && ag_is_bodyguard() && get_property("_auto_combatState") != "(it11311)")
+	{
+		enemy = to_monster(substring(get_property("lastEncounter"), 0, index_of(get_property("lastEncounter"), " acting as")));
+	}
+	
 	disguises_combat_helper(round, enemy, text);		//disguise delimit mask identification
+	fotd_combat_helper();				//fall of the dinosaurs dino identification
 
 	if(get_property("auto_combatDirective") != "")
 	{
@@ -126,7 +150,7 @@ string auto_combatHandler(int round, monster enemy, string text)
 			string doThis = actions[idx];
 			while(contains_text(doThis, "(") && contains_text(doThis, ")") && (idx < count(actions)))
 			{
-				set_property("auto_combatHandler", get_property("auto_combatHandler") + doThis);
+				combat_status_add(doThis);
 				idx++;
 				if(idx >= count(actions))
 				{

@@ -167,15 +167,9 @@ boolean auto_wantToEquipPowerfulGlove()
 {
 	if (!auto_hasPowerfulGlove()) return false;
 
-	if (in_plumber() && !plumber_nothingToBuy()) return true;
+	if(in_plumber() && !plumber_nothingToBuy()) return true;
 
-	int pixels = whitePixelCount();
-	if (contains_text(get_property("nsTowerDoorKeysUsed"), "digital key"))
-	{
-		pixels += 30;
-	}
-
-	return pixels < 30;
+	return false;
 }
 
 boolean auto_willEquipPowerfulGlove()
@@ -392,8 +386,8 @@ boolean auto_latheAppropriateWeapon()
 
 boolean auto_hasCargoShorts()
 {
-	return possessEquipment($item[Cargo Cultist Shorts]) && 
-		auto_is_valid($item[Bagged Cargo Cultist Shorts]);
+	return possessEquipment(wrap_item($item[Cargo Cultist Shorts])) && 
+		auto_is_valid(wrap_item($item[Cargo Cultist Shorts]));
 }
 
 boolean auto_cargoShortsCanOpenPocket()
@@ -492,17 +486,21 @@ boolean auto_cargoShortsOpenPocket(item i)
 	return pick_pocket(available_pocket(i));
 }
 
-boolean auto_cargoShortsOpenPocket(monster m)
+boolean auto_cargoShortsOpenPocket(monster m, boolean speculative)
 {
 	if (!auto_cargoShortsCanOpenPocket(m))
 		return false;
+
+	if (speculative)
+		return true;
 	
+	auto_log_info("Using cargo shorts to summon " + m.name, "blue");
 	string[int] pages;
 	pages[0] = "inventory.php?action=pocket";
 	pages[1] = `choice.php?pwd={my_hash()}&whichchoice=1420&option=1&pocket={available_pocket(m)}`;
 	if (autoAdvBypass(0, pages, $location[Noob Cave], ""))
 	{
-		handleTracker(m, $item[Cargo Cultist Shorts], "auto_copies");
+		handleTracker(m, wrap_item($item[Cargo Cultist Shorts]), "auto_copies");
 		return true;
 	}
 	return false;
@@ -536,7 +534,7 @@ boolean auto_cargoShortsOpenPocket(string s)
 	else if (s.to_item() != $item[none])
 		return auto_cargoShortsOpenPocket(s.to_item());
 	else if (s.to_monster() != $monster[none])
-		return auto_cargoShortsOpenPocket(s.to_monster());
+		return auto_cargoShortsOpenPocket(s.to_monster(), false);
 	else if (s.to_effect() != $effect[none])
 		return auto_cargoShortsOpenPocket(s.to_effect());
 	else if (s.to_stat() != $stat[none])
@@ -568,61 +566,52 @@ boolean auto_mapTheMonsters()
 	return false;
 }
 
-monster auto_monsterToMap(location loc)
+monster auto_monsterToMap(location loc, string page)
 {
-	monster enemy = $monster[none];
-	switch (loc)
+	matcher mons = create_matcher("heyscriptswhatsupwinkwink\" value=\"(\\d+)", page);
+	monster[int] monOpts;
+	int i = 0;
+	int bestmon = 0;
+	while(find(mons))
 	{
-		case $location[8-Bit Realm]:
-			enemy = $monster[Blooper];
-			break;
-		case $location[The Haunted Library]:
-			enemy = $monster[writing desk];
-			break;
-		case $location[The Defiled Niche]:
-			enemy = $monster[dirty old lihc];
-			break;
-		case $location[The Goatlet]:
-			enemy = $monster[dairy goat];
-			break;
-		case $location[Twin Peak]:
-			enemy = $monster[bearpig topiary animal];
-			break;
-		case $location[A Mob of Zeppelin Protesters]:
-			enemy = $monster[blue oyster cultist];
-			break;
-		case $location[The Red Zeppelin]:
-			enemy = $monster[red butler];
-			break;
-		case $location[Inside the Palindome]:
-			enemy = $monster[Bob Racecar];
-			break;
-		case $location[The Hidden Bowling Alley]:
-			enemy = $monster[Pygmy Bowler];
-			break;
-		case $location[The Hidden Hospital]:
-			enemy = $monster[Pygmy Witch Surgeon];
-			break;
-		case $location[The Haunted Laundry Room]:
-			enemy = $monster[cabinet of dr. limpieza];
-			break;
-		case $location[The Haunted Wine Cellar]:
-			enemy = $monster[possessed wine rack];
-			break;
-		case $location[The Middle Chamber]:
-			enemy = $monster[tomb rat];
-			break;
-		case $location[Sonofa Beach]:
-			enemy = $monster[lobsterfrogman]; // not implemented yet (will be used to saber copy in 2021)
-			break;
+		//record the possible monsters and identify the best one to target
+		monOpts[i] = mons.group(1).to_int().to_monster();
+		if(zoneRank(monOpts[i], loc) <= zoneRank(monOpts[bestmon], loc)) 
+		{
+			bestmon = i;
+		}
+		i += 1;
 	}
-	return enemy;
+	return monOpts[bestmon];
 }
 
-void cartographyChoiceHandler(int choice)
+void cartographyChoiceHandler(int choice, string page)
 {
 	auto_log_info("cartographyChoiceHandler Running choice " + choice, "blue");
-	if (choice == 1427) // Hidden Junction (Guano Junction)
+	if (choice == 1425)
+	{
+		if (item_amount($item[Orcish frat-paddle]) > 0)
+		{
+			run_choice(1); // choosing baseball cap + cargo shorts to complete outfit
+		}
+		else if (item_amount($item[Orcish baseball cap]) > 0)
+		{
+			run_choice(2); // choosing frat-paddle + cargo shorts to complete outfit
+		}
+		else if (item_amount($item[Orcish cargo shorts]) > 0)
+		{
+			run_choice(3); // choosing frat-paddle + baseball cap to complete outfit
+		}
+		else if (item_amount($item[Orcish frat-paddle]) > 0 && item_amount($item[Orcish baseball cap]) > 0 && item_amount($item[Orcish cargo shorts]) > 0)
+		{
+			run_choice(4); // if you have each outfit piece, just fight the orcs
+		}
+		else
+		{
+			run_choice(1); // if nothing, just grab the first option. could consider opt 4 and YR?
+		}
+	}
+	else if (choice == 1427) // The Hidden Junction (Guano Junction)
 	{
 		run_choice(1); // fight the screambat.
 	}
@@ -632,13 +621,13 @@ void cartographyChoiceHandler(int choice)
 	}
 	else if (choice == 1429) // No Nook Unknown (The Defiled Nook)
 	{
-			run_choice(1); // acquire 2 evil eyes
+		run_choice(1); // acquire 2 evil eyes
 	}
 	else if (choice == 1430) // Ghostly Memories (A-boo Peak)
 	{
 		run_choice(1); // If we are adventuring in the peak we are trying to clear the peak, go to the horror
 	}
-	else if (choice == 1431) // Choice 1431 is Here There Be Giants (Cartography)
+	else if (choice == 1431) // Here There Be Giants (Cartography)
 	{
 		if (internalQuestStatus("questL10Garbage") == 9)
 		{
@@ -687,20 +676,20 @@ void cartographyChoiceHandler(int choice)
 			run_choice(3);
 		}
 	}
-	else if (choice == 1433) // Sneaky Sneaky (The Hippy Camp (Verge of War))
+	else if (choice == 1433) // Sneaky, Sneaky (The Hippy Camp (Verge of War))
 	{
 		run_choice(3); // start the war
 	}
-	else if (choice == 1434) // Sneaky Sneaky (Orcish Frat House (Verge of War))
+	else if (choice == 1434) // Sneaky, Sneaky (Orcish Frat House (Verge of War))
 	{
 		run_choice(2); // start the war
 	}
 	else if (choice == 1435) // Leading Yourself Right to Them (Map the Monsters)
 	{
-		monster enemy = auto_monsterToMap(my_location());
+		monster enemy = auto_monsterToMap(my_location(), page);
 		if (enemy != $monster[none])
 		{
-			handleTracker($skill[Map the Monsters], enemy, "auto_otherstuff");
+			handleTracker($skill[Map the Monsters], enemy, "auto_mapperidot");
 			run_choice(1, `heyscriptswhatsupwinkwink={enemy.to_int()}`);
 		}
 		else
@@ -756,7 +745,17 @@ boolean auto_handleRetrocape()
 	string settingsProperty = get_property("auto_retrocapeSettings");
 	if (settingsProperty == "")
 	{
-		return false;
+		string capeConfiguration = get_property("retroCapeWashingInstructions");
+		int beatenUpCount = get_property("auto_beatenUpCount").to_int();
+		if (capeConfiguration == "thrill" && beatenUpCount >= 5)
+		{
+			// if currently configured for stats and have been getting beaten up, change to stun
+			settingsProperty = "heck,hold";
+		}
+		else
+		{
+			return false;
+		}	
 	}
 
 	string[int] settings = split_string(settingsProperty, ",");

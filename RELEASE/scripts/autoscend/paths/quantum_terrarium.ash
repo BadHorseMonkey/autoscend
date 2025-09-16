@@ -1,6 +1,6 @@
 boolean in_quantumTerrarium()
 {
-	return auto_my_path() == "Quantum Terrarium";
+	return my_path() == $path[Quantum Terrarium];
 }
 
 boolean qt_currentFamiliar(familiar fam)
@@ -58,6 +58,23 @@ boolean LX_quantumTerrarium()
 				}
 			}
 			break;
+		case $familiar[Reassembled blackbird]:
+			if(!(internalQuestStatus("questL11Black") < 0 || internalQuestStatus("questL11Black") > 1 || black_market_available()))
+			{
+				return L11_blackMarket();
+			}
+			break;
+		case $familiar[Reconstituted crow]:
+			if(!(internalQuestStatus("questL11Black") < 0 || internalQuestStatus("questL11Black") > 1 || black_market_available()))
+			{
+				return L11_blackMarket();
+			}
+			break;
+		case $familiar[Melodramedary]:
+			if(!(internalQuestStatus("questL11Desert") != 0 || get_property("desertExploration").to_int() >= 100))
+			{
+				return L11_aridDesert();
+			}
 		default:
 			break;
 	}
@@ -66,18 +83,17 @@ boolean LX_quantumTerrarium()
 
 void qt_initializeSettings()
 {
-	if (in_quantumTerrarium())
+	if(in_quantumTerrarium())
 	{
 		set_property("auto_skipNuns", true);	//Remove when leprechaun swapping is supported at nuns.
 	}
 }
 
-string qt_TerrariumPage = visit_url("qterrarium.php");
-
 boolean qt_FamiliarAvailable (familiar fam)
 {
 	//Check to see if target familiar can be forced.
 	string qt_FamiliarKey = "<option value=\"" + fam.to_int().to_string() + "\">";
+	string qt_TerrariumPage = visit_url("qterrarium.php");
 	matcher qt_FamiliarSearch = create_matcher(qt_FamiliarKey, qt_TerrariumPage);
 
 	if (qt_turnsToNextQuantumAlignment() > 1)
@@ -110,5 +126,14 @@ boolean qt_FamiliarSwap (familiar fam)
 	else
 	{
 		return false;
+	}
+}
+
+void auto_refreshQTFam()
+{
+	if(in_quantumTerrarium())
+	{
+		// go to familiar page to ensure QT mafia prefs are up to date
+		visit_url("familiar.php");
 	}
 }

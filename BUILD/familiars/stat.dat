@@ -2,22 +2,30 @@
 Galloping Grill	ML:>=120
 Baby Sandworm	ML:>=120
 God Lobster	ML:>=120;item:God Lobster's Ring>0
+# Mini Kiwi for turn gen in 11 Things path
+Mini Kiwi	path:11 Things I Hate About U;item:mini kiwi<=8
+# Volleyball or sombrero (whichever is best) with a multiplier
+Jill-of-All-Trades	item:LED candle>0
+Patriotic Eagle	ML:>=120
 Hovering Sombrero	ML:>=120
 # Can be tuned to give pure mainstat, so it's better than other volleyballs
 Crimbo Shrub
-# Volleyballs with a multiplier
 #Baby Mutant Rattlesnake	grimdark:0
 #Baby Mutant Rattlesnake	grimdark:1
+# Fairyeverything
+Jill-of-All-Trades
 # Fairyballs
 Elf Operative
 Optimistic Candle
 Rockin' Robin
+Hobo in Sheep's Clothing
 # Volleychauns
 Ghost of Crimbo Commerce
 Golden Monkey
 Bloovian Groose
 Unconscious Collective
 Grim Brother
+Mini Kiwi
 Dramatic Hedgehog
 Chauvinist Pig
 Uniclops
@@ -27,7 +35,7 @@ Cymbal-Playing Monkey
 Cheshire Bat
 # VolleyWhelps
 Melodramedary
-# Might as well build up weight for free runs, even though I'm pretty sure we don't use them...
+# Build up weight for free runs
 Frumious Bandersnatch
 # Slightly special volleyballs
 Ghost of Crimbo Cheer
@@ -37,6 +45,7 @@ Party Mouse
 Lil' Barrel Mimic
 Piranha Plant
 Antique Nutcracker
+Jill-O-Lantern
 # Fancy
 Miniature Sword &amp; Martini Guy
 #Baby Mutant Rattlesnake	grimdark:2

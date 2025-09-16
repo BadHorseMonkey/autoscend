@@ -1,8 +1,18 @@
 import<autoscend.ash>
 
+//Calculates MP to acquire at low max mp levels
+//At low max MP, important to keep MP near max, since every saucestorm (etc.) counts
+void low_mp_handler()
+{
+	auto_log_debug("Low max MP detected.", "red");
+	int MIN_USEFUL_MP = 6; //Saucestorm
+	int TARGET_MP = my_maxmp() - (my_maxmp() % MIN_USEFUL_MP);
+	acquireMP(TARGET_MP, 0);
+}
+
 void print_footer()
 {
-	auto_log_info("[" +my_class()+ "] @ path of [" +my_path()+ "]", "blue");
+	auto_log_info("[" +my_class()+ "] @ path of [" +my_path().name+ "]", "blue");
 	
 	string next_line = "HP: " +my_hp()+ "/" +my_maxhp()+ ", MP: " +my_mp()+ "/" +my_maxmp()+ ", Meat: " +my_meat();
 	switch(my_class())
@@ -25,17 +35,23 @@ void print_footer()
 	}
 	auto_log_info(next_line, "blue");
 	
+	string stat_sign(int s)
+	{
+		if(s >= 0) return "+" +s;
+		else return s;
+	}
+	
 	int bonus_mus = my_buffedstat($stat[muscle]) - my_basestat($stat[muscle]);
 	int bonus_mys = my_buffedstat($stat[mysticality]) - my_basestat($stat[mysticality]);
 	int bonus_mox = my_buffedstat($stat[moxie]) - my_basestat($stat[moxie]);
-	auto_log_info("mus: " +my_basestat($stat[muscle])+ " + " +bonus_mus+
-	". mys: " +my_basestat($stat[mysticality])+ " + " +bonus_mys+
-	". mox: " +my_basestat($stat[moxie])+ " + " +bonus_mox, "blue");
+	auto_log_info("mus: " +my_basestat($stat[muscle])+stat_sign(bonus_mus)+
+	". mys: " +my_basestat($stat[mysticality])+stat_sign(bonus_mys)+
+	". mox: " +my_basestat($stat[moxie])+stat_sign(bonus_mox), "blue");
 	
 	next_line = "";
 	if(pathHasFamiliar())
 	{
-		next_line += "Familiar: " +my_familiar()+ " @ " + familiar_weight(my_familiar()) + " + " + weight_adjustment() + "lbs. ";
+		next_line += "Familiar: " +my_familiar()+ " @ " + auto_famWeight() + "lbs. ";
 	}
 	if(my_class() == $class[Pastamancer])
 	{
@@ -69,6 +85,116 @@ void print_footer()
 		}
 	}
 	auto_log_info(next_line, "blue");
+	
+}
+
+void auto_ghost_prep(location place)
+{
+	//if place contains physically immune enemies then we need to be prepared to deal non physical damage.
+	if(!is_ghost_in_zone(place))
+	{
+		return;		//no ghosts no problem
+	}
+	if(in_plumber())
+	{
+		return;		//these paths either have their own ghost handling. or can always kill ghosts
+	}
+	if(get_property("youRobotBottom").to_int() == 2)
+	{
+		return;		//you robot with a rocket crotch. deals fire damage to kill ghosts.
+	}
+	//a few iconic spells per avatar is ok. no need to be too exhaustive
+	foreach sk in $skills[
+		Saucestorm, saucegeyser,	//base classes
+		Fist of the Mummy,		    //actually ed the undying
+		Boil,						//avatar of jarlsberg
+		Bilious Burst,				//zombie slayer
+		Heroic Belch,				//avatar of boris
+		Smoke Break,				//avatar of sneaky pete
+		Fireball Toss,				//path of the plumber
+		Chill of the Tomb,			//dark gyffte
+		Lavafava, Pungent Mung, Beanstorm,			  //avatar of west of loathing
+		Hot Foot, Emmental Elemental, Sax of Violence //avatar of shadow over loathing
+		]
+	{
+		if(auto_have_skill(sk))
+		{
+			if(my_maxmp() >= 32)
+				acquireMP(32, 0);		//make sure we actually have the MP to cast spells
+			else low_mp_handler();
+		}
+		if(canUse(sk)) return;	//we can kill them with a spell
+	}
+	if(auto_haveDarts() && dartEleDmg())
+	{
+		addToMaximize("+equip " + $item[Everfull Dart Holster]); //If we have darts and an elemental damage buff, might as well use that
+		return;
+	}
+	
+	int m_hot = 1;
+	int m_cold = 1;
+	int m_spooky = 1;
+	int m_sleaze = 1;
+	int m_stench = 1;
+	float [monster] apprates = auto_combat_appearance_rates(place, true);
+	foreach idx, mob in get_monsters(place)
+	{
+		if(apprates[mob] <= 0) continue; //won't show up because banished or req's not fulfilled
+		if(mob.physical_resistance >= 80)
+		{
+			switch(monster_element(mob))
+			{
+			case $element[hot]:
+				m_hot = 0;
+				m_sleaze = 2;
+				m_stench = 2;
+				break;
+			case $element[cold]:
+				m_cold = 0;
+				m_hot = 2;
+				m_spooky = 2;
+				break;
+			case $element[spooky]:
+				m_spooky = 0;
+				m_hot = 2;
+				m_stench = 2;
+				break;
+			case $element[sleaze]:
+				m_sleaze = 0;
+				m_cold = 2;
+				m_spooky = 2;
+				break;
+			case $element[stench]:
+				m_stench = 0;
+				m_sleaze = 2;
+				m_cold = 2;
+				break;
+			}
+		}
+	}
+	
+	string max_with;
+	int bonus;
+	if(m_hot != 0) max_with += "," +10*m_hot+ "hot dmg";
+	if(m_cold != 0) max_with += "," +10*m_cold+ "cold dmg";
+	if(m_spooky != 0) max_with += "," +10*m_spooky+ "spooky dmg";
+	if(m_sleaze != 0) max_with += "," +10*m_sleaze+ "sleaze dmg";
+	if(m_stench != 0) max_with += "," +10*m_stench+ "stench dmg";
+	
+	simMaximizeWith(max_with);
+	if(m_hot != 0) bonus += simValue("hot damage");
+	if(m_cold != 0) bonus += simValue("cold damage");
+	if(m_spooky != 0) bonus += simValue("spooky damage");
+	if(m_sleaze != 0) bonus += simValue("sleaze damage");
+	if(m_stench != 0) bonus += simValue("stench damage");
+	
+	if(bonus > 9)
+	{
+		addToMaximize(max_with);
+		return;
+	}
+
+	abort("I was about to head into [" +place+ "] which contains ghosts. I can not damage those");
 }
 
 boolean auto_pre_adventure()
@@ -81,21 +207,25 @@ boolean auto_pre_adventure()
 	}
 	auto_log_info("Starting preadventure script...", "green");
 	auto_log_debug("Adventuring at " +place, "green");
-	
-	preAdvUpdateFamiliar(place);
-	ed_handleAdventureServant(place);
+
+	if (item_amount($item[Handful of split pea soup]) == 0 && creatable_amount($item[Handful of split pea soup]) > 0)
+	{
+		return create(1, $item[Handful of split pea soup]);
+	}
 
 	if(get_floundry_locations() contains place)
 	{
-		buffMaintain($effect[Baited Hook], 0, 1, 1);
+		buffMaintain($effect[Baited Hook]);
 	}
 
 	// be ready to use red rocket if we don't have one
-	if(item_amount($item[Clan VIP Lounge Key]) > 0 &&	// Need VIP access
-		get_property("_fireworksShop").to_boolean() &&	// in a clan that has the Underground Fireworks Shop
+	if(have_fireworks_shop() &&							// in a clan that has the Underground Fireworks Shop
 		item_amount($item[red rocket]) == 0 &&			// Don't buy if we already have one
 		auto_is_valid($item[red rocket]) &&				// or if it's not valid
 		can_eat() &&									// be in a path that can eat
+		my_class() != $class[Pig Skinner] &&			// don't want to use a red rocket in Pig Skinner
+		!in_wereprof() &&								// don't use if we are in WereProf
+		!auto_haveDarts() &&							// don't want to use a red rocket if we have darts
 		my_meat() > npc_price($item[red rocket]) + meatReserve())
 	{
 		retrieve_item(1, $item[red rocket]);
@@ -110,15 +240,67 @@ boolean auto_pre_adventure()
 	{
 		uneffect($effect[Spiky Shell]);
 		uneffect($effect[Scarysauce]);
+		if(!uneffect($effect[Scariersauce])) abort("Could not uneffect [Scariersauce]");
+	}
+	
+	if(my_class() == $class[Pastamancer] && my_thrall() == $thrall[Vampieroghi] && place == $location[The Hidden Apartment Building]
+		&& auto_have_skill($skill[Dismiss Pasta Thrall]))
+	{
+		// vampieroghi can dispell the shaman curse, preventing us from making quest progress
+		use_skill($skill[Dismiss Pasta Thrall]);
 	}
 
+	//save some MP while buffing
+	item[int] beforeBuffs = auto_saveEquipped();
+	addToMaximize("-1000mana cost, -tie");
+	equipMaximizedGear();
+
+	if(place == $location[The Smut Orc Logging Camp])
+	{
+		prepareForSmutOrcs();
+	}
+
+	if(place == $location[Twin Peak])
+	{
+		prepareForTwinPeak(false);
+	}
+
+	if(place == $location[Vanya\'s Castle])
+	{
+		provideInitiative(600, $location[Vanya\'s Castle], true);	
+		addToMaximize("200initiative 800max");
+	}
+	if(place == $location[The Fungus Plains])
+	{
+		provideMeat(450, $location[The Fungus Plains], true);
+		addToMaximize("200meat drop 550max");
+	}
+	if(place == $location[Megalo-City])
+	{
+		buffMaintain($effect[Ghostly Shell], 30, 1, 1);			//+80 DA. 6 MP
+		buffMaintain($effect[Astral Shell], 30, 1, 1);			//+80 DA, 10 MP
+		buffMaintain($effect[Feeling Peaceful], 0, 1, 1);
+		addToMaximize("200DA 600max");
+	}
+	if(place == $location[Hero\'s Field])
+	{
+		provideItem(400, $location[Hero\'s Field], true);
+		addToMaximize("200item 500max");
+	}
+
+	boolean junkyardML;
 	if($locations[Next to that Barrel with something Burning In It, Near an Abandoned Refrigerator, Over where the Old Tires Are, Out by that Rusted-Out Car] contains place)
 	{
+		junkyardML = true;
 		uneffect($effect[Spiky Shell]);
 		uneffect($effect[Scarysauce]);
+		if(in_aosol()){
+			uneffect($effect[Queso Fustulento]);
+		}
+		if(!uneffect($effect[Scariersauce])) abort("Could not uneffect [Scariersauce]");
 	}
 
-	if(in_boris())
+	if(is_boris())
 	{
 		if((have_effect($effect[Song of Solitude]) == 0) && (have_effect($effect[Song of Battle]) == 0))
 		{
@@ -167,60 +349,169 @@ boolean auto_pre_adventure()
 		{
 			if (0 == have_effect($effect[Uncucumbered]))
 			{
-				buyUpTo(1, $item[hair spray]);
+				auto_buyUpTo(1, $item[hair spray]);
 				use(1, $item[hair spray]);
 			}
-			if (0 == have_effect($effect[Minerva\'s Zen]))
-			{
-				buyUpTo(1, $item[glittery mascara]);
-				use(1, $item[glittery mascara]);
+			// below no longer applicable due to current seed, will find new source
+			//	if (0 == have_effect($effect[Minerva\'s Zen]))
+			//	{
+			//		auto_buyUpTo(1, $item[glittery mascara]);
+			//		use(1, $item[glittery mascara]);
+			//	}
+		}
+	}
+	
+	// If we're zootomist, need to level, and we have +xp on our milk, cast it.
+	if (in_zootomist() && my_level()<13) {
+		foreach ef in $effects[Milk of Familiar Kindness, Milk of Familiar Cruelty] {
+			if (numeric_modifier(ef,$modifier[familiar experience]) > 0) {
+				buffMaintain(ef);
 			}
 		}
 	}
 
 	// this calls the appropriate provider for +combat or -combat depending on the zone we are about to adventure in..
-	boolean burningDelay = ((auto_voteMonster(true) || isOverdueDigitize() || auto_sausageGoblin()) && place == solveDelayZone());
+	boolean burningDelay = auto_burningDelay();
+	boolean gettingLucky = auto_gettingLucky();
+	boolean forcedNonCombat = auto_haveQueuedForcedNonCombat();
 	generic_t combatModifier = zone_combatMod(place);
-	if (combatModifier._boolean && !burningDelay && !auto_haveQueuedForcedNonCombat()) {
+	if (combatModifier._boolean && !auto_queueIgnore()) {
 		acquireCombatMods(combatModifier._int, true);
 	}
 
-	foreach i,mon in get_monsters(place)
+	// Update our familiar after combat modifiers (which can set the familiar), but before Crystal Ball (familiar equip)
+	preAdvUpdateFamiliar(place);
+	ed_handleAdventureServant(place);
+
+	boolean considerCrystalBallBonus = false;
+	if(auto_haveCrystalBall())
 	{
-		if(auto_wantToYellowRay(mon, place) && !burningDelay)
+		if(auto_queueIgnore() || get_property("auto_nextEncounter").to_monster() != $monster[none])
 		{
-			adjustForYellowRayIfPossible(mon);
+			//if already forced by something else, no need to handle your ball
 		}
-
-		if(auto_wantToBanish(mon, place) && !burningDelay)
+		else if(!auto_forceHandleCrystalBall(place))
 		{
-			adjustForBanishIfPossible(mon, place);
+			//equipping the crystal ball can't hurt but it is neither forced nor forbidden
+			//will consider giving it a maximizer bonus after checking if monster queue control is wanted
+			considerCrystalBallBonus = true;
 		}
-
-		if(auto_wantToReplace(mon, place) && !burningDelay)
+	}
+	
+	monster [int] possible_monsters;
+	if(get_property("auto_nextEncounter").to_monster() != $monster[none])
+	{
+		//next monster is forced by zone mechanics or by now locked-in miniature crystal ball
+		possible_monsters[count(possible_monsters)] = get_property("auto_nextEncounter").to_monster();
+	}
+	else
+	{
+		foreach i,mon in get_monsters(place)
 		{
-			adjustForReplaceIfPossible(mon);
+			//consider all possible monsters, with queue effects argument false
+			//	queue argument true would return only crystal ball prediction if there is one and equipped,
+			//	but here keeping ball equipped will be either not guaranteed if monsters don't matter, or forbidden
+			if(appearance_rates(place)[mon] > 0)
+			{
+				possible_monsters[count(possible_monsters)] = mon;
+			}
 		}
-
-		if (auto_wantToSniff(mon, place) && !burningDelay)
+	}
+	
+	boolean zoneHasUnwantedMonsters;
+	boolean zoneHasWantedMonsters;
+	if (!auto_queueIgnore())	//next encounter is a monster from the zone
+	{
+		foreach i,mon in possible_monsters
 		{
-			adjustForSniffingIfPossible(mon);
+			if(auto_wantToYellowRay(mon, place))
+			{
+				adjustForYellowRayIfPossible(mon);
+				zoneHasWantedMonsters = true;
+			}
+			if(auto_wantToBanish(monster_phylum(mon), place))
+			{
+				// attempt to prepare for banishing, but if we can not try free running
+				adjustForBanishIfPossible(monster_phylum(mon), place);
+				zoneHasUnwantedMonsters = true;
+			}
+			boolean wantToBanish  = auto_wantToBanish(mon, place);
+			boolean wantToFreeRun = auto_wantToFreeRun(mon, place) || auto_forceFreeRun(false);
+			if(wantToBanish || wantToFreeRun)
+			{
+				// attempt to prepare for banishing, but if we can not try free running
+				boolean willBanish = false;
+				if (wantToBanish)
+				{
+					willBanish = adjustForBanishIfPossible(mon, place);
+				}
+				if(!willBanish)
+				{
+					adjustForFreeRunIfPossible(mon,place);
+				}
+				zoneHasUnwantedMonsters = true;
+			}
+			if(auto_wantToReplace(mon, place))
+			{
+				adjustForReplaceIfPossible(mon);
+				zoneHasUnwantedMonsters = true;
+			}
+			if(auto_wantToCopy(mon, place))
+			{
+				adjustForCopyIfPossible(mon);
+				zoneHasWantedMonsters = true;
+			}
+			if(auto_wantToSniff(mon, place))
+			{
+				adjustForSniffingIfPossible(mon);
+				zoneHasWantedMonsters = true;
+			}
+			if (auto_havePeridot() && peridotManuallyDesiredMonsters() contains mon && !haveUsedPeridot(place))
+			{
+				zoneHasWantedMonsters = true;
+			}
+		}
+	}
+	if(considerCrystalBallBonus)
+	{
+		//give miniature crystal ball a maximizer bonus only if the location has monsters to avoid or target
+		//TODO give 0 if tally of available banishes and no sniff makes trying to avoid unwanted monsters with ball not worthwhile?
+		int crystalBallMaximizerBonus = 0 + (zoneHasUnwantedMonsters ? 300 : 0) + (zoneHasWantedMonsters ? 300 : 0);
+		if(crystalBallMaximizerBonus != 0)
+		{
+			addToMaximize("+" + crystalBallMaximizerBonus + "bonus "+wrap_item($item[miniature crystal ball]).to_string());
 		}
 	}
 
-	if (in_koe() && possessEquipment($item[low-pressure oxygen tank]))
+	// Equip the combat lover's locket if we're missing a monster in the zone
+	if (auto_haveCombatLoversLocket())
+	{
+		foreach mon,rate in appearance_rates(place)
+		{
+			if (rate > 0 && mon.id > 0 && mon.copyable && !mon.boss && !auto_monsterInLocket(mon) && place != $location[Noob Cave])
+			{
+				// We use Noob Cave as the placeholder location for zoneless encounters so lets not equip it when we're not actually going there.
+				auto_log_info('We want to get the "' + mon + '" monster into the combat lover\'s locket from ' + place + ", so we're bringing it along.", "blue");
+				autoEquip($item[combat lover\'s locket]);
+				break;
+			}
+		}
+	}
+
+	if(in_koe() && possessEquipment($item[low-pressure oxygen tank]))
 	{
 		autoEquip($item[low-pressure oxygen tank]);
 	}
 
 	// Latte may conflict with certain quests. Ignore latte drops for the greater good.
 	boolean[location] IgnoreLatteDrop = $locations[The Haunted Boiler Room];
-	if (auto_latteDropWanted(place) && !(IgnoreLatteDrop contains place))
+	if(auto_latteDropWanted(place) && !(IgnoreLatteDrop contains place) && !is_boris())
+	// boris has no way to equip latte mug or Kramco (no offhand or familiar)
 	{
-		if (auto_sausageGoblin() && place == solveDelayZone())
+		if(auto_sausageGoblin() && place == solveDelayZone())
 		{
 			// Burning delay using a Sausage Goblin. Can't hold both the Kramco and the Latte, we only have one off-hand!
-			if (canChangeToFamiliar($familiar[Left-Hand Man]))
+			if(canChangeToFamiliar($familiar[Left-Hand Man]))
 			{
 				// If we can use the Left-Hand man, we can get a two-fer with both the Kramco and Latte
 				// Hurrah! We found an actual use for it, it's not useless after all!
@@ -237,13 +528,61 @@ boolean auto_pre_adventure()
 		}
 	}
 
+	if(get_property("auto_forceNonCombatSource") == "McHugeLarge left ski" && !get_property("auto_avalancheDeployed").to_boolean())
+	{
+		autoForceEquip($slot[acc2],wrap_item($item[McHugeLarge left ski]));
+		// We put it in acc2 so it can't clash with the war accessory in acc3
+	}
+	
+	if(get_property("auto_forceNonCombatSource") == "jurassic parka" && !get_property("auto_parkaSpikesDeployed").to_boolean())
+	{
+		autoForceEquip(wrap_item($item[jurassic parka])); //equips parka and forbids maximizer tampering with shirt slot
+		//not using auto_configureParka("spikes") so maximizer stays aware of ML from shirt, instead of maximizing with another shirt or no shirt before changing to parka
+		set_property("auto_parkaSetting","spikes"); 
+		if (get_property("parkaMode") != "spikolodon")
+		{
+			cli_execute(`parka spikolodon`);
+		}
+	}
+	
+	item fluda = $item[Flash Liquidizer Ultra Dousing Accessory];
+	boolean[location] douse_locs = $locations[The Hatching Chamber, The Feeding Chamber, The Royal Guard Chamber];
+	if ( (douse_locs contains place || auto_allRifts() contains place) && auto_dousesRemaining()>0)
+	{
+		autoEquip(fluda);
+	}
+	
+	item bat_wings = $item[bat wings];
+	boolean[location] swoop_locs = auto_swoopLocations();
+	if ( (swoop_locs contains place || auto_allRifts() contains place) && auto_swoopsRemaining()>0)
+	{
+		autoEquip(bat_wings);
+	}
+	
+	item exting = wrap_item($item[industrial fire extinguisher]);
 	if(auto_FireExtinguisherCombatString(place) != "" || $locations[The Goatlet, Twin Peak, The Hidden Bowling Alley, The Hatching Chamber, The Feeding Chamber, The Royal Guard Chamber] contains place)
 	{
-		autoEquip($item[industrial fire extinguisher]);
+		autoEquip(exting);
+	}
+	else if(auto_availableBrickRift() == place && auto_fireExtinguisherCharges() >= 30)
+	{
+		autoEquip(exting); // Can do at least 1 polar vortex for shadow bricks while keeping 20 for a zone specific skill
 	}
 	else if(in_wildfire() && auto_haveFireExtinguisher() && place.fire_level > 3)
 	{
-		addBonusToMaximize($item[industrial fire extinguisher], 200); // extinguisher prevents per-round hot damage in wildfire path 
+		addBonusToMaximize(exting, 200); // extinguisher prevents per-round hot damage in wildfire path 
+	}
+
+	if(!haveUsedPeridot(place) && auto_havePeridot() && zoneHasWantedMonsters)
+	{
+		//add a large bonus to Peridot of Peril if the zone has wanted monsters and we haven't visited there yet
+		addBonusToMaximize($item[Peridot of Peril], 1000);
+	}
+
+	if(place == $location[The Penultimate Fantasy Airship] && auto_haveBatWings())
+	{
+		// only here to get immateria. Get it faster with bat wings
+		autoEquip($item[Bat Wings]);
 	}
 
 
@@ -300,16 +639,25 @@ boolean auto_pre_adventure()
 		}
 	}
 
-	// Use some instakills.  Removing option from Pocket Familiars so it won't unnecessarily equip in third slot.
+	// Use some instakills. Can't use Chest X-Ray in Pocket Familiars.
 	item DOCTOR_BAG = $item[Lil\' Doctor&trade; Bag];
-	if(auto_is_valid(DOCTOR_BAG) && possessEquipment(DOCTOR_BAG) && (get_property("_chestXRayUsed").to_int() < 3) && my_adventures() <= 19 && !in_pokefam())
+	if(auto_is_valid(DOCTOR_BAG) && possessEquipment(DOCTOR_BAG) && auto_is_valid($skill[Chest X-Ray]) && (get_property("_chestXRayUsed").to_int() < 3) && my_adventures() <= 19 && !in_pokefam())
 	{
 		auto_log_info("We still haven't used Chest X-Ray, so let's equip the doctor bag.");
 		autoEquip($slot[acc3], DOCTOR_BAG);
 	}
 
+	item dartHolster = $item[Everfull Dart Holster];
+	if (auto_haveDarts() && have_effect($effect[Everything Looks Red]) == 0 && !in_avantGuard() && !in_pokefam())
+	{
+		auto_log_info("We don't have ELR so let's hit a bullseye");
+		autoEquip($slot[acc3], dartHolster);
+	}
+
+
 	equipOverrides();
 	kolhs_preadv(place);
+	ag_bgChat();
 
 	if (is100FamRun() && my_familiar() == $familiar[none])
 	{
@@ -320,7 +668,7 @@ boolean auto_pre_adventure()
 		auto_log_debug("Re-equipped your " + get_property("auto_100familiar") + " as something had unequipped it. This is bad and should be investigated.");
 	}
 
-	if((place == $location[8-Bit Realm]) && (my_turncount() != 0))
+	if($locations[Vanya's Castle, The Fungus Plains, Megalo-City, Hero's Field] contains place && (my_turncount() != 0))
 	{
 		if(!possessEquipment($item[Continuum Transfunctioner]))
 		{
@@ -373,44 +721,34 @@ boolean auto_pre_adventure()
 	bat_formPreAdventure();
 	horsePreAdventure();
 	auto_snapperPreAdventure(place);
+	sweatpantsPreAdventure();
 
+	boolean mayNeedItem = true;
+	if (burningDelay || forcedNonCombat) {
+		//when delay burning if the monster wants item drop it would not be the zone based value that follows
+		//none of the uses of auto_forceNextNoncombat() will need item drop
+		mayNeedItem = false;
+	}
+	else if (gettingLucky && !($locations[The Hidden Temple, The Red Zeppelin, A Maze of Sewer Tunnels] contains place)) {
+		//Baa'baa'bu'ran is probably the only Lucky adventure that will need item drop
+		mayNeedItem = false;
+	}
 	generic_t itemNeed = zone_needItem(place);
-	if(itemNeed._boolean)
+	if(mayNeedItem && itemNeed._boolean)
 	{
-		addToMaximize("50item " + (ceil(itemNeed._float) + 100.0) + "max"); // maximizer treats item drop as 100 higher than it actually is for some reason.
-		simMaximize();
-		float itemDrop = simValue("Item Drop");
-		if(itemDrop < itemNeed._float)
-		{
-			if (buffMaintain($effect[Fat Leon\'s Phat Loot Lyric], 20, 1, 10))
-			{
-				itemDrop += 20.0;
-			}
-			if (buffMaintain($effect[Singer\'s Faithful Ocelot], 35, 1, 10))
-			{
-				itemDrop += 10.0;
-			}
-		}
-		if(itemDrop < itemNeed._float && !haveAsdonBuff())
-		{
-			asdonAutoFeed(37);
-			if(asdonBuff($effect[Driving Observantly]))
-			{
-				itemDrop += 50.0;
-			}
-		}
-		if(itemDrop < itemNeed._float)
-		{
-			auto_log_debug("We can't cap this drop bear!", "purple");
+		boolean capped = provideItem(ceil(itemNeed._float),place,false);
+		if (!capped && auto_haveCupidBow()) {
+			addBonusToMaximize($item[toy cupid bow],400);
 		}
 	}
 
 
 	// Only cast Paul's pop song if we expect it to more than pay for its own casting.
-	//	Casting before ML variation ensures that this, the more important buff, is cast before ML.
-	if(auto_predictAccordionTurns() >= 8)
+	// Casting before ML variation ensures that this, the more important buff, is cast before ML.
+	// Also check we're not regenning loads of MP already
+	if(auto_predictAccordionTurns() >= 8 && numeric_modifier($modifier[MP Regen Min]) < 5)
 	{
-		buffMaintain($effect[Paul\'s Passionate Pop Song], 0, 1, 1);
+		buffMaintain($effect[Paul\'s Passionate Pop Song]);
 	}
 
 	// ML adjustment zone section
@@ -420,7 +758,8 @@ boolean auto_pre_adventure()
 		boolean purgeML = false;
 
 	boolean[location] highMLZones = $locations[Oil Peak, The Typical Tavern Cellar, The Haunted Boiler Room, The Defiled Cranny];
-	boolean[location] lowMLZones = $locations[The Smut Orc Logging Camp];
+	boolean[location] lowMLZones = $locations[The Smut Orc Logging Camp, Fight in the Dirt, Fight in the Tall Grass, Fight in the Very Tall Grass,
+		Tower Level 1, Tower Level 2, Tower Level 3];
 
 	// Generic Conditions
 	if(inAftercore())
@@ -446,8 +785,24 @@ boolean auto_pre_adventure()
 		purgeML = false;
 	}
 
-	// Item specific Conditions
-	if((equipped_amount($item[Space Trip Safety Headphones]) > 0) || (equipped_amount($item[Red Badge]) > 0))
+	// Backup Camera copies have double ML applied. Reduce ML to avoid getting beaten up
+	if(auto_backupTarget())
+	{
+		doML = false;
+		removeML = true;
+		purgeML = false;
+	}
+	
+	// Gremlins specific. need to let them hit so avoid ML unless defense is very high
+	if(junkyardML && my_buffedstat($stat[moxie]) < (2*monster_attack($monster[erudite gremlin])))
+	{
+		doML = false;
+		removeML = true;
+		purgeML = false;
+	}
+
+	// monster level increases zone damage. don't re apply ML buff shrugged by level_11.ash
+	if(place == $location[The Copperhead Club])
 	{
 		doML = false;
 		removeML = true;
@@ -468,17 +823,25 @@ boolean auto_pre_adventure()
 		purgeML = false;
 	}
 
+	// Path Specific Conditions
+	if(is_professor() || in_plumber())  //Path of the Plumber doesn't need ML and WereProfessor professor doesn't like ML
+	{
+		doML = false;
+		removeML = true;
+		purgeML = true;
+	}
+
 	// Act on ML settings
 	if(doML)
 	{
 		// Catch when we leave lowMLZone, allow for being "side tracked" by delay burning
-		if((have_effect($effect[Driving Intimidatingly]) > 0) && (get_property("auto_debuffAsdonDelay") >= 2))
+		if((have_effect($effect[Driving Intimidatingly]) > 0) && (get_property("auto_debuffAsdonDelay").to_int() >= 2))
 		{
 			auto_log_debug("No Reason to delay Asdon Usage");
 			uneffect($effect[Driving Intimidatingly]);
 			set_property("auto_debuffAsdonDelay", 0);
 		}
-		else if((have_effect($effect[Driving Intimidatingly]).to_int() == 0)  && (get_property("auto_debuffAsdonDelay") >= 0))
+		else if((have_effect($effect[Driving Intimidatingly]).to_int() == 0)  && (get_property("auto_debuffAsdonDelay").to_int() >= 0))
 		{
 			set_property("auto_debuffAsdonDelay", 0);
 		}
@@ -511,22 +874,67 @@ boolean auto_pre_adventure()
 			uneffect($effect[Blessing of Serqet]);
 		}
 	}
-
-	// Here we enforce our ML restrictions if +/-ML is not specifically called in the current maximizer string
-	enforceMLInPreAdv();
+	
+	// Here we give a limited value to ML if +/-ML is not specifically called in the current maximizer string. This does not enforce the limit.
+	// if the limit setting has no value then ML has already been given a value indirectly by "exp" in the default maximizer statement
+	if((get_property("auto_MLSafetyLimit") != "") && (!contains_text(get_property("auto_maximize_current"), "ml")))
+	{
+		if(get_property("auto_MLSafetyLimit").to_int() == -1)
+		{
+			// prevent all ML being equiped if limit is -1 and equip lowest possible ML including going negative
+			addToMaximize("-1000ml");
+		}
+		else if(get_property("auto_MLSafetyLimit").to_int() <= highest_available_mcd())
+		{
+			//mcd can already fill all allowed ML without using equipment slots
+			//if the value is 0 adding ML with 0max is useless, it does not stop the maximizer from picking equipment with ML,
+			//0max would just tell the maximizer to add +0 value to ML over 0 which is the same as not giving any value for ML
+		}
+		else
+		{
+			// note: maximizer will allow to go above the max value, ML just won't contribute to the total score after the max value
+			addToMaximize("ml " + get_property("auto_MLSafetyLimit").to_int() + "max");
+		}
+	}
 	
 	// Last minute switching for garbage tote. But only if nothing called on januaryToteAcquire this turn.
-	if(!get_property("auto_januaryToteAcquireCalledThisTurn").to_boolean())
+	if(!get_property("auto_januaryToteAcquireCalledThisTurn").to_boolean() && auto_is_valid($item[Wad of Used Tape]))
 	{
 		januaryToteAcquire($item[Wad Of Used Tape]);
 	}
 
+	removeFromMaximize("-1000mana cost");
+
 	// EQUIP MAXIMIZED GEAR
+	auto_ghost_prep(place);
 	equipMaximizedGear();
 	auto_handleRetrocape(); // has to be done after equipMaximizedGear otherwise the maximizer reconfigures it
+	auto_handleParka(); //same as retrocape above
+
 	cli_execute("checkpoint clear");
 
-	if (isActuallyEd() && is_wearing_outfit("Filthy Hippy Disguise") && place == $location[Hippy Camp]) {
+	//before guaranteed non combats that give stats, overrule maximized equipment to increase stat gains
+	if(place == $location[The Hidden Bowling Alley] && item_amount($item[Bowling Ball]) > 0 && get_property("hiddenBowlingAlleyProgress").to_int() < 5)
+	{
+		equipStatgainIncreasers();
+		plumber_forceEquipTool();
+	}
+	else if(place == $location[The Haunted Ballroom] && internalQuestStatus("questM21Dance") == 3)
+	{
+		equipStatgainIncreasers();
+		plumber_forceEquipTool();
+	}
+	else if(place == $location[The Shore\, Inc. Travel Agency] && item_amount($item[Forged Identification Documents]) == 0)
+	{
+		equipStatgainIncreasers(my_primestat(),true);	//The Shore, Inc. Travel Agency choice 793 is configured to pick main stat or all stats
+		plumber_forceEquipTool();
+	}
+	if(auto_handleCCSC() && !have_equipped($item[Candy Cane Sword Cane]))
+	{
+		autoForceEquip($item[Candy Cane Sword Cane]); // Force the candy cane sword cane if June cleaver has been buffed beyond the 1000 bonus boost
+	}
+
+	if (isActuallyEd() && is_wearing_outfit("Filthy Hippy Disguise") && place == $location[The Hippy Camp]) {
 		equip($slot[Pants], $item[None]);
 		put_closet(item_amount($item[Filthy Corduroys]), $item[Filthy Corduroys]);
 		if (is_wearing_outfit("Filthy Hippy Disguise")) {
@@ -544,7 +952,7 @@ boolean auto_pre_adventure()
 	else
 	{
 		// Last minute MCD alterations if Limit set, otherwise trust maximizer
-		if(get_property("auto_MLSafetyLimit") != "")
+		if(get_property("auto_MLSafetyLimit") != "" && !removeML)
 		{
 			auto_setMCDToCap();
 		}
@@ -576,25 +984,54 @@ boolean auto_pre_adventure()
 	}
 
 	//my_mp is broken in Dark Gyffte
-	if (my_class() != $class[Vampyre])
+	if (!in_darkGyffte())
 	{
 		int wasted_mp = my_mp() + mp_regen() - my_maxmp();
 		if(wasted_mp > 0 && my_mp() > 400)
 		{
 			auto_log_info("Burning " + wasted_mp + " MP...");
-			cli_execute("burn " + wasted_mp);
+			auto_burnMP(wasted_mp);
 		}
 	}
 	borisWastedMP();
 	borisTrusty();
 
-	acquireMP(32, 1000);
+	int mpNeeded = 32; // enough for 5 casts of Saucestorm. Usually this should be fine for most combats
+	switch (my_class())
+	{
+		// expand this for other cases where we need more MP for combat.
+		// ideally we could ask the combat function to tell us how much MP it will need for an example encounter in the zone we are going to.
+		case $class[Disco Bandit]:
+			if ($locations[Shadow Rift (The Ancient Buried Pyramid), Shadow Rift (The Hidden City), Shadow Rift (The Misspelled Cemetary)] contains place)
+			{
+				// DB aborts in the Shadow Rifts because it runs out of MP trying to use Saucestorm against physically immune monsters when it has Extingo equipped.
+				foreach sk in $skills[Disco Dance of Doom, Disco Dance II: Electric Boogaloo, Disco Dance 3: Back in the Habit]
+				{
+					// yes it casts all 3 of those first then tries to repeat Saucestorm. On 32 or so MP.
+					if (auto_have_skill(sk))
+					{
+						mpNeeded += mp_cost(sk);
+					}
+				}
+			}
+			break;
+		default:
+			break;
+	}
+	acquireMP(mpNeeded, 0);
+                       
+  //acquireMP won't do anything if the maxMP isn't big enough,
+  //so we'll use this to ensure we have MP in low max scenarios
+  if(my_maxmp() < mpNeeded)
+	{
+		low_mp_handler();
+	}
 
 	if(in_hardcore() && (my_class() == $class[Sauceror]) && (my_mp() < 32))
 	{
 		auto_log_warning("We don't have a lot of MP but we are chugging along anyway", "red");
 	}
-	groundhogAbort(place);
+	lar_abort(place);
 	if (my_inebriety() > inebriety_limit())
 	{
 		if($locations[The Tunnel of L.O.V.E.] contains place)
@@ -610,8 +1047,14 @@ boolean auto_pre_adventure()
 		pokefam_makeTeam();
 	}
 
+	utilizeStillsuit();	
+
 	set_property("auto_priorLocation", place);
 	auto_log_info("Pre Adventure at " + place + " done, beep.", "blue");
+	
+	//try to catch infinite loop where we repeatedly try to do the same thing.
+	//works with code found in auto_post_adv.ash
+	set_property("_auto_inf_session_adv", my_session_adv());
 	
 	//to avoid constant flipping on the MCD. change it right before adventuring
 	int mcd_target = get_property("auto_mcd_target").to_int();
@@ -630,6 +1073,9 @@ void main()
 	try
 	{
 		ret = auto_pre_adventure();
+		if (pathHasFamiliar() && canChangeFamiliar() && my_familiar()==$familiar[none] && !isFantasyRealm(my_location())) {
+			abort("Trying to adventure with no familiar.");
+		}
 	}
 	finally
 	{

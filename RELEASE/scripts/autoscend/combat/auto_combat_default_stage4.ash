@@ -2,6 +2,9 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 {
 	// stage 4 = prekill. copy, sing along, flyer and other things that need to be done after delevel but before killing
 	string retval;
+
+	//Unskip stage 3
+	if(get_property("auto_skipStage3").to_boolean()) set_property("auto_skipStage3", false);
 	
 	// Path = The Source
 	retval = auto_combatTheSourceStage4(round, enemy, text);
@@ -10,58 +13,52 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	// Path = license to adventure
 	retval = auto_combatLicenseToAdventureStage4(round, enemy, text);
 	if(retval != "") return retval;
+
+	// Path = The Source
+	retval = auto_combatZombieSlayerStage4(round, enemy, text);
+	if(retval != "") return retval;
+
+	// Path = WereProfessor
+	retval = auto_combatWereProfessorStage4(round, enemy, text);
+	if(retval != "") return retval;
+
+	// Skip if have drones out
+	if(get_property("auto_skipStage4").to_boolean()) return "";
 	
-	//olfaction is used to spawn 2 more copies of the target at current location.
-	//as well as eliminate the special rule that reduces the odds of encountering the same enemy twice in a row.
-	if(auto_wantToSniff(enemy, my_location()))
+	//sniffers are skills that increase the odds of encountering this same monster again in the current zone.
+	if(auto_wantToSniff(enemy, my_location()) && !ag_is_bodyguard())
 	{
-		if(canUse($skill[Transcendent Olfaction]) && (have_effect($effect[On The Trail]) == 0))
+		skill sniffer = getSniffer(enemy);
+		if(sniffer != $skill[none])
 		{
-			handleTracker(enemy, $skill[Transcendent Olfaction], "auto_sniffs");
-			return useSkill($skill[Transcendent Olfaction]);
-		}
-
-		if(canUse($skill[Make Friends]) && get_property("makeFriendsMonster") != enemy && my_audience() >= 20)
-		{
-			handleTracker(enemy, $skill[Make Friends], "auto_sniffs");
-			return useSkill($skill[Make Friends]);
-		}
-
-		if(!contains_text(get_property("longConMonster"), enemy) && canUse($skill[Long Con]) && (get_property("_longConUsed").to_int() < 5))
-		{
-			handleTracker(enemy, $skill[Long Con], "auto_sniffs");
-			return useSkill($skill[Long Con]);
-		}
-
-		if(canUse($skill[Perceive Soul]) && enemy != get_property("auto_bat_soulmonster").to_monster())
-		{
-			handleTracker(enemy, $skill[Perceive Soul], "auto_sniffs");
-			set_property("auto_bat_soulmonster", enemy);
-			return useSkill($skill[Perceive Soul]);
-		}
-
-		if(canUse($skill[Gallapagosian Mating Call]) && enemy != get_property("_gallapagosMonster").to_monster())
-		{
-			handleTracker(enemy, $skill[Gallapagosian Mating Call], "auto_sniffs");
-			return useSkill($skill[Gallapagosian Mating Call]);
-		}
-
-		if(canUse($skill[Offer Latte to Opponent]) && enemy != get_property("_latteMonster").to_monster() && !get_property("_latteCopyUsed").to_boolean())
-		{
-			handleTracker(enemy, $skill[Offer Latte to Opponent], "auto_sniffs");
-			return useSkill($skill[Offer Latte to Opponent]);
+			if(sniffer == $skill[Perceive Soul])		//mafia does not track the target of this skill so we must do so.
+			{
+				set_property("auto_bat_soulmonster", enemy);
+			}
+			handleTracker(enemy, sniffer, "auto_sniffs");
+			combat_status_add("sniffed");
+			return useSkill(sniffer);
 		}
 	}
 	
+	if(enemy == $monster[animated ornate nightstand] && my_familiar() == $familiar[Nosy Nose] && !is100FamRun() && 
+	canUse($skill[Get a Good Whiff of This Guy]) && !isSniffed(enemy,$skill[Get a Good Whiff of This Guy]))
+	{
+		//this is a special case, if Nosy Nose is used in the bedroom in a non 100 fam run it is to whiff this monster
+		//and use only this sniffer because the elegant monster must be found next and this one gets turned off easily by using a different familiar
+		handleTracker(enemy, $skill[Get a Good Whiff of This Guy], "auto_sniffs");
+		return useSkill($skill[Get a Good Whiff of This Guy]);
+	}
+	
 	//TODO auto_doCombatCopy property is silly. get rid of it
-	if(!haveUsed($item[Rain-Doh black box]) && (my_path() != "Heavy Rains") && (get_property("_raindohCopiesMade").to_int() < 5))
+	if(!haveUsed($item[Rain-Doh black box]) && (!in_heavyrains()) && (get_property("_raindohCopiesMade").to_int() < 5) && !ag_is_bodyguard())
 	{
 		if((enemy == $monster[Modern Zmobie]) && (get_property("auto_modernzmobiecount").to_int() < 3))
 		{
 			set_property("auto_doCombatCopy", "yes");
 		}
 	}
-	if(canUse($item[Rain-Doh black box]) && (get_property("auto_doCombatCopy") == "yes") && (enemy != $monster[gourmet gourami]))
+	if(canUse($item[Rain-Doh black box]) && (get_property("auto_doCombatCopy") == "yes") && (enemy != $monster[gourmet gourami]) && !ag_is_bodyguard())
 	{
 		set_property("auto_doCombatCopy", "no");
 		markAsUsed($item[Rain-Doh black box]); // mark even if not used so we don't spam the error message
@@ -93,7 +90,7 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	//iotm monster copier that works by creating wandering copies of the targetted monster
 	if(canUse($skill[Digitize]) && (get_property("_sourceTerminalDigitizeUses").to_int() == 0) && !inAftercore())
 	{
-		if($monsters[Ninja Snowman Assassin, Lobsterfrogman] contains enemy)
+		if($monsters[Lobsterfrogman] contains enemy)
 		{
 			if(get_property("_sourceTerminalDigitizeMonster") != enemy)
 			{
@@ -114,6 +111,22 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 		}
 	}
 	
+	//iotm monster duplicator that creates a chained fight of the current monster
+	if(auto_wantToCopy(enemy, my_location()) && !ag_is_bodyguard())
+	{
+		skill copier = getCopier(enemy);
+		if(copier != $skill[none] && canUse(copier))
+		{
+			if(copier == $skill[Blow the Purple Candle\!])		//mafia does not track the target of this skill so we must do so.
+			{
+				set_property("auto_purple_candled", enemy);
+			}
+			handleTracker(enemy, copier, "auto_copies");
+			combat_status_add("copied");
+			return useSkill(copier);
+		}
+	}
+
 	//accordion thief mechanic. unlike pickpocket it can be done at any round
 	if(canUse($skill[Steal Accordion]) && (my_class() == $class[Accordion Thief]) && canSurvive(2.0))
 	{
@@ -137,37 +150,28 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 		return useItem($item[Abstraction: Action]);
 	}
 	
+	//these loofah skills stagger and provide MP, meat, or XP
+	if (monster_level_adjustment() <= 150) {
+		if(canUse($skill[loofah leglifts]))
+		{
+			return useSkill($skill[loofah leglifts]);
+		}
+		if(canUse($skill[loofah hosenzittern]))
+		{
+			return useSkill($skill[loofah hosenzittern]);
+		}
+		if(canUse($skill[loofah head-scratch]))
+		{
+			return useSkill($skill[loofah head-scratch]);
+		}
+	}
+	
 	//stocking mimic can produce meat until round 10.
 	if((my_familiar() == $familiar[Stocking Mimic]) && (round < 12) && canSurvive(1.5))
 	{
 		if (item_amount($item[Seal Tooth]) > 0)
 		{
 			return "item " + $item[Seal Tooth];
-		}
-	}
-	
-	//nanorhino familiar stuff
-	boolean nanorhino_charged = get_property("_nanorhinoCharge").to_int() >= 100;
-	if(my_familiar() == $familiar[Nanorhino] && nanorhino_charged && have_effect($effect[Nanobrawny]) + have_effect($effect[Nanobrainy]) + have_effect($effect[Nanoballsy]) == 0)
-	{
-		foreach it in $skills[Toss, Clobber, Shell Up, Lunge Smack, Thrust-Smack, Headbutt, Kneebutt, Lunging Thrust-Smack, Club Foot, Shieldbutt, Spirit Snap, Cavalcade Of Fury, Northern Explosion, Spectral Snapper, Harpoon!, Summon Leviatuga]
-		{
-			if((it == $skill[Shieldbutt]) && !hasShieldEquipped())
-			{
-				continue;
-			}
-			if(canUse(it, false))
-			{
-				return useSkill(it, false);
-			}
-		}
-	}
-	if(canUse($skill[Unleash Nanites]) && (have_effect($effect[Nanobrawny]) >= 40))
-	{
-		#if appropriate enemy, then banish
-		if(enemy == $monster[Pygmy Janitor])
-		{
-			return useSkill($skill[Unleash Nanites]);
 		}
 	}
 
@@ -183,37 +187,12 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	}
 	if(wink_skill != $skill[none])		//we can wink / romatic arrow
 	{
-		if($monsters[Lobsterfrogman, Modern Zmobie, Ninja Snowman Assassin] contains enemy)
+		if($monsters[Lobsterfrogman, Modern Zmobie] contains enemy)
 		{
-			if(enemy == $monster[modern zmobie])
-			{
-				set_property("auto_waitingArrowAlcove", get_property("cyrptAlcoveEvilness").to_int() - 20);
-			}
 			return useSkill(wink_skill);
 		}
 	}
 	
-	//[Conspiracy Island] iotm specific. clip the fingernails of [One of Doctor Weirdeaux's creations]
-	int fingernailClippersLeft = get_property("auto_combatHandlerFingernailClippers").to_int();
-	if(fingernailClippersLeft > 0)
-	{
-		fingernailClippersLeft = fingernailClippersLeft - 1;
-		if(fingernailClippersLeft == 0)
-		{
-			markAsUsed($item[military-grade fingernail clippers]);
-		}
-		set_property("auto_combatHandlerFingernailClippers", "" + fingernailClippersLeft);
-		return "item " + $item[military-grade fingernail clippers];
-	}
-
-	if((item_amount($item[military-grade fingernail clippers]) > 0)  && (enemy == $monster[one of Doctor Weirdeaux\'s creations]))
-	{
-		if(!haveUsed($item[military-grade fingernail clippers]))
-		{
-			fingernailClippersLeft = 3;
-			set_property("auto_combatHandlerFingernailClippers", "3");
-		}
-	}
 	
 	//insults are used as part of the pirates quest
 	if(canUse($item[The Big Book of Pirate Insults]) && (numPirateInsults() < 8) && (internalQuestStatus("questM12Pirate") < 5))
@@ -235,29 +214,77 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	}
 	
 	//this completes the quest Advertise for the Mysterious Island Arena which is a sidequest which accelerates the L12 frat-hippy war quest
-	if((canUse($item[Rock Band Flyers]) || canUse($item[Jam Band Flyers])) && (get_property("flyeredML").to_int() < 10000) && (my_location() != $location[The Battlefield (Frat Uniform)]) && (my_location() != $location[The Battlefield (Hippy Uniform)]) && !get_property("auto_ignoreFlyer").to_boolean())
+	//kol tracks each band flyering separately. mafia tracks them in a singular property as it assumes the player will not flyer for the wrong band. make sure to only flyer for the side we want to flyer for
+	item flyer = $item[Rock Band Flyers];
+	if(auto_warSide() == "hippy")
 	{
-		skill stunner = getStunner(enemy);
-		if(stunner != $skill[none])
+		flyer = $item[Jam Band Flyers];
+	}
+	if(canUse(flyer) && get_property("flyeredML").to_int() < 10000 && my_location() != $location[The Battlefield (Frat Uniform)] && my_location() != $location[The Battlefield (Hippy Uniform)] && !get_property("auto_ignoreFlyer").to_boolean())
+	{
+		boolean shouldFlyer = false;
+		boolean staggeringFlyer = false;
+		item flyerWith;
+		if(my_class() == $class[Disco Bandit] && auto_have_skill($skill[Deft Hands]) && !combat_status_check("(it"))
 		{
-			return useSkill(stunner);
+			//first item throw in the fight staggers
+			staggeringFlyer = true;
 		}
-
-		if(canUse($item[Rock Band Flyers]))
+		if(auto_have_skill($skill[Ambidextrous Funkslinging]))
 		{
-			if(canUse($item[Time-Spinner]) && auto_have_skill($skill[Ambidextrous Funkslinging]))
+			if (canUse($item[Time-Spinner]))
 			{
-				return useItems($item[Rock Band Flyers], $item[Time-Spinner]);
+				flyerWith = $item[Time-Spinner];
+				staggeringFlyer = true;
 			}
-			return useItem($item[Rock Band Flyers]);
+			else if (canUse($item[beehive]))
+			{
+				if(my_class() == $class[Sauceror] && haveUsed($skill[Curse Of Weaksauce]))
+				{
+					//don't miss MP by killing weak monsters with beehive
+					int beehiveDamage = ceil(30*combatItemDamageMultiplier()*MLDamageToMonsterMultiplier());
+					if(monster_hp() > beehiveDamage)
+					{
+						flyerWith = $item[beehive];
+						staggeringFlyer = true;
+					}
+				}
+				else
+				{
+					flyerWith = $item[beehive];
+					staggeringFlyer = true;
+				}
+			}
 		}
-		if(canUse($item[Jam Band Flyers]))
+		if(staggeringFlyer && (!stunnable(enemy) || monster_level_adjustment() > 150))
 		{
-			if(canUse($item[Time-Spinner]) && auto_have_skill($skill[Ambidextrous Funkslinging]))
+			staggeringFlyer = false;
+		}
+		boolean stunned;
+		if(!staggeringFlyer && stunnable(enemy))
+		{
+			skill stunner = getStunner(enemy);
+			stunned = combat_status_check("stunned");
+			if(stunner != $skill[none] && !stunned)
 			{
-				return useItems($item[Jam Band Flyers], $item[Time-Spinner]);
+				combat_status_add("stunned");
+				return useSkill(stunner);
 			}
-			return useItem($item[Jam Band Flyers]);
+		}
+		if(canSurvive(3.0) || stunned || staggeringFlyer)
+		{
+			shouldFlyer = true;
+		}
+		if(shouldFlyer)
+		{
+			if(flyerWith != $item[none])
+			{
+				return useItems(flyer, flyerWith);
+			}
+			else
+			{
+				return useItem(flyer);
+			}
 		}
 	}
 	
@@ -299,11 +326,19 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	}
 	
 	//use latte iotm to restore 50% of max MP
-	if((!in_plumber() && my_class() != $class[Vampyre] && my_path() != "Zombie Slayer") &&	//paths that do not use MP
+	if((!in_plumber() && !in_darkGyffte() && !in_zombieSlayer()) &&	//paths that do not use MP
 	canUse($skill[Gulp Latte]) &&
 	my_mp() * 2 < my_maxmp())		//gulp latte restores 50% of your MP. do not waste it.
 	{
 		return useSkill($skill[Gulp Latte]);
+	}
+
+	//use haiku katana's HP and MP restore skill
+	if((!in_plumber() && !in_darkGyffte() && !in_zombieSlayer()) &&	//paths that do not use MP
+	canUse($skill[Spring Raindrop Attack]) &&
+	my_mp() < 0.9 * my_maxmp())
+	{
+		return useSkill($skill[Spring Raindrop Attack]);
 	}
 
 	//stinkbug physically resistant monsters
@@ -316,17 +351,47 @@ string auto_combatDefaultStage4(int round, monster enemy, string text)
 	}
 
 	// use red rocket from Clan VIP Lounge to get 5x stats from next food item consumed. Does not stagger on use
-	if(canUse($item[red rocket]) && have_effect($effect[Everything Looks Red]) <= 0 && have_effect($effect[Ready to Eat]) <= 0 && canSurvive(5.0) &&
-		// consumeStuff fills liver first up to 10 or 15 before eating, pending if billiards room if completed. Gives confidence that we will eat within 100 turns.
-		my_inebriety() >= 10 && my_adventures() < 100)
+	if(fullness_left() > 0 && canUse($item[red rocket]) && have_effect($effect[Everything Looks Red]) <= 0 && have_effect($effect[Ready to Eat]) <= 0 && canSurvive(5.0) && my_adventures() < 100)
 	{
-		//use if next food is large in size. Currently autoConsume doesn't analyze stat gain, which would be better
-		item simulationOutput = auto_autoConsumeOneSimulation("eat");
-		if (simulationOutput != $item[none] && simulationOutput.fullness > 3)
+		if(in_plumber())
 		{
 			return useItem($item[red rocket]);
 		}
-		
+		//use if next food is large in size. Currently autoConsume doesn't analyze stat gain, which would be better
+		//disabled until fix: https://github.com/loathers/autoscend/issues/1053
+		//item simulationOutput = auto_autoConsumeOneSimulation("eat");
+		//if (simulationOutput != $item[none] && simulationOutput.fullness > 3)
+		//{
+			return useItem($item[red rocket]);
+		//}
+	}
+
+	// use cosmic bowling ball iotm
+	if(auto_bowlingBallCombatString(my_location(), true) != "" && !enemy.boss)
+	{
+		return auto_bowlingBallCombatString(my_location(), false);
+	}
+
+	// prep avalanche if requested
+	if(canUse($skill[McHugeLarge Avalanche]) && get_property("auto_forceNonCombatSource") == "McHugeLarge left ski"
+		&& !get_property("auto_avalancheDeployed").to_boolean())
+	{
+		set_property("auto_avalancheDeployed", true);
+		return useSkill($skill[McHugeLarge Avalanche]);
+	}
+	
+	// prep parka NC forcing if requested
+	if(canUse($skill[Launch spikolodon spikes]) && get_property("auto_forceNonCombatSource") == "jurassic parka"
+		&& !get_property("auto_parkaSpikesDeployed").to_boolean())
+	{
+		set_property("auto_parkaSpikesDeployed", true);
+		return useSkill($skill[Launch spikolodon spikes]);
+	}
+
+	// get extra combat stats
+	if(shouldCinchoConfetti() && canSurvive(5.0))
+	{
+		return useSkill($skill[Cincho: Confetti Extravaganza]);
 	}
 	
 	return "";

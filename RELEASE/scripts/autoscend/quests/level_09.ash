@@ -35,7 +35,7 @@ boolean L9_leafletQuest()
 	{
 		return false;
 	}
-	if(get_property("leafletCompleted").to_boolean())
+	if(get_property("leafletCompleted").to_boolean() || get_property("auto_leaflet_done").to_boolean())
 	{
 		return false;
 	}
@@ -56,14 +56,19 @@ boolean L9_leafletQuest()
 	}
 	
 	auto_log_info("Got a leaflet to do", "blue");
-	if(disregardInstantKarma())		//checks a user setting as well as current level
+	if (disregardInstantKarma()&&!auto_ignoreExperience())		//checks a user setting as well as current level
 	{
+		equipStatgainIncreasers();
 		cli_execute("leaflet");		//also gain +200 substats for each stat
+		if (get_property("leafletCompleted").to_boolean())
+		{
+			set_property("auto_leaflet_done", true);
+		}
 	}
 	else
 	{
-		//in plumber you eat manually and can jump from level 8 to 13 via food.
 		cli_execute("leaflet nomagic");		//no substat gains
+		set_property("auto_leaflet_done", true); // we're done here even with no stats
 	}
 	
 	return get_property("leafletCompleted").to_boolean();
@@ -73,31 +78,32 @@ void L9_chasmMaximizeForNoncombat()
 {
 	auto_log_info("Let's assess our scores for blech house", "blue");
 	string best = "mus";
-	string mustry = "100muscle,100weapon damage,1000weapon damage percent";
-	string mystry = "100mysticality,100spell damage,1000 spell damage percent";
-	string moxtry = "100moxie,1000sleaze resistance";
-	simMaximizeWith(mustry);
+	location loc = $location[The Smut Orc Logging Camp];
+	string mustry = "1000muscle,1000weapon damage,10000weapon damage percent";
+	string mystry = "1000mysticality,1000spell damage,10000 spell damage percent";
+	string moxtry = "1000moxie,10000sleaze resistance";
+	simMaximizeWith(loc, mustry);
 	float musmus = simValue("Buffed Muscle");
-	float musflat = simValue("Weapon Damage");
+	float musflat = simValue("Weapon Damage");	//incorrectly includes 15% weapon power
 	float musperc = simValue("Weapon Damage Percent");
 	int musscore = floor(square_root((musmus + musflat)/15*(1+musperc/100)));
 	auto_log_info("Muscle score: " + musscore, "blue");
-	simMaximizeWith(mystry);
+	simMaximizeWith(loc, mystry);
 	float mysmys = simValue("Buffed Mysticality");
 	float mysflat = simValue("Spell Damage");
 	float mysperc = simValue("Spell Damage Percent");
 	int mysscore = floor(square_root((mysmys + mysflat)/15*(1+mysperc/100)));
 	auto_log_info("Mysticality score: " + mysscore, "blue");
-	if(mysscore > musscore)
+	if(mysscore >= musscore)	//overwrite equal muscle score if possible because it may be 1 lower than predicted due to the above weapon damage issue
 	{
 		best = "mys";
 	}
-	simMaximizeWith(moxtry);
+	simMaximizeWith(loc, moxtry);
 	float moxmox = simValue("Buffed Moxie");
 	float moxres = simValue("Sleaze Resistance");
 	int moxscore = floor(square_root(moxmox/30*(1+moxres*0.69)));
 	auto_log_info("Moxie score: " + moxscore, "blue");
-	if(moxscore > mysscore && moxscore > musscore)
+	if(moxscore >= mysscore && moxscore >= musscore)
 	{
 		best = "mox";
 	}
@@ -118,12 +124,18 @@ void L9_chasmMaximizeForNoncombat()
 	}
 }
 
+int bridgeGoal()
+{
+	return (!auto_haveBatWings() ? 30 : 25);
+}
+
 int fastenerCount()
 {
 	int base = get_property("chasmBridgeProgress").to_int();
-	base = base + item_amount($item[Morningwood Plank]);
-	base = base + item_amount($item[Raging Hardwood Plank]);
-	base = base + item_amount($item[Weirdwood Plank]);
+	base = base + item_amount($item[Thick Caulk]);
+	base = base + item_amount($item[Long Hard Screw]);
+	base = base + item_amount($item[Messy Butt Joint]);
+	base = base + 5 * item_amount($item[Smut Orc Keepsake Box]);
 
 	return base;
 }
@@ -131,38 +143,59 @@ int fastenerCount()
 int lumberCount()
 {
 	int base = get_property("chasmBridgeProgress").to_int();
-	base = base + item_amount($item[Thick Caulk]);
-	base = base + item_amount($item[Long Hard Screw]);
-	base = base + item_amount($item[Messy Butt Joint]);
+	base = base + item_amount($item[Morningwood Plank]);
+	base = base + item_amount($item[Raging Hardwood Plank]);
+	base = base + item_amount($item[Weirdwood Plank]);
+	base = base + 5 * item_amount($item[Smut Orc Keepsake Box]);
 
 	return base;
 }
 
-boolean L9_chasmBuild()
+boolean finishBuildingSmutOrcBridge()
 {
-	if (internalQuestStatus("questL09Topping") < 0 || get_property("chasmBridgeProgress").to_int() >= 30 || internalQuestStatus("questL09Topping") > 0)
+	if (internalQuestStatus("questL09Topping") != 0 || get_property("chasmBridgeProgress").to_int() >= bridgeGoal())
 	{
 		return false;
 	}
 
-	if (shenShouldDelayZone($location[The Smut Orc Logging Camp]))
+	// use any keepsake boxes we have
+	item keepsakeBox = $item[Smut Orc Keepsake Box];
+	if(item_amount(keepsakeBox) > 0 && auto_is_valid(keepsakeBox))
 	{
-		auto_log_debug("Delaying Logging Camp in case of Shen.");
-		return false;
+		use(item_amount(keepsakeBox), keepsakeBox);
 	}
 
-	if (LX_loggingHatchet()) { return true; } // turn free, might save some adventures. May as well get it if we can.
-
-	auto_log_info("Chasm time", "blue");
-	
 	// make sure our progress count is correct before we do anything.
 	visit_url("place.php?whichplace=orc_chasm&action=bridge"+(to_int(get_property("chasmBridgeProgress"))));
 
-	if (!in_glover() && get_property("chasmBridgeProgress").to_int() < 30 && auto_cargoShortsOpenPocket(666))
+	// finish chasm if we can
+	if(auto_canLeapBridge())
 	{
- 		// fight Smut Orc Pervert from Cargo Shorts for a Smut Orc Keepsake Box
- 		use(1, $item[Smut Orc Keepsake Box]);
+		autoForceEquip($item[bat wings]);
+		visit_url("place.php?whichplace=orc_chasm&action=bridge_jump");
+		visit_url("place.php?whichplace=highlands&action=highlands_dude");
 		return true;
+	}
+	if(get_property("chasmBridgeProgress").to_int() >= 30)
+	{
+		visit_url("place.php?whichplace=highlands&action=highlands_dude");
+		return true;
+	}
+
+	return false;
+}
+
+
+void prepareForSmutOrcs()
+{
+
+	if(lumberCount() >= bridgeGoal() && fastenerCount() >= bridgeGoal())
+	{
+		// must be here for shen snake and quest objective is already done
+		// set blech NC and don't bother prepping for the zone
+		auto_log_info("Adventuring at Smut Orc Logging Camp when quest is done. Skipping preparing to maximize zone progress.", "blue");
+		set_property("choiceAdventure1345", 1);
+		return;
 	}
 
 	// -Combat is useless here since NC is triggered by killing Orcs...So we kill orcs better!
@@ -174,6 +207,8 @@ boolean L9_chasmBuild()
 		// This only applies to classes which can use perm'd skills,
 		// so let's not waste time and console spam when we're a class or path that can't do any of this.
 		boolean useSpellsInOrcCamp = false;
+		
+		acquireMP(32, 0);	//pre_adv will always do this later, but waiting for it may fail checks of ability to cast spells here
 		if(setFlavour($element[cold]) && canUse($skill[Stuffed Mortar Shell]))
 		{
 			useSpellsInOrcCamp = true;
@@ -219,6 +254,9 @@ boolean L9_chasmBuild()
 		}
 	}
 	
+	// This adds a tonne of damage and NC progress
+	buffMaintain($effect[Triple-Sized]);
+	
 	if(get_property("smutOrcNoncombatProgress").to_int() == 15)
 	{
 		// If we think the non-com will hit NOW we clear maximizer to keep previous settings from carrying forward
@@ -229,27 +267,16 @@ boolean L9_chasmBuild()
 		// TODO: once explicit formulas are spaded, use simulated maximizer
 		// to determine best approach.
 		L9_chasmMaximizeForNoncombat();
-		autoAdv(1, $location[The Smut Orc Logging Camp]);
-		visit_url("place.php?whichplace=orc_chasm&action=bridge"+(to_int(get_property("chasmBridgeProgress"))));
-		if(get_property("chasmBridgeProgress").to_int() >= 30)
-		{
-			visit_url("place.php?whichplace=highlands&action=highlands_dude");
-		}
-		return true;
+		return;
 	}
 
-	if (in_plumber() && possessEquipment($item[frosty button]))
+	if(in_plumber() && possessEquipment($item[frosty button]))
 	{
 		autoEquip($item[frosty button]);
 	}
 
 	if(in_hardcore())
 	{
-		int need = (30 - get_property("chasmBridgeProgress").to_int());
-		if(L9_ed_chasmBuildClover(need))
-		{
-			return true;
-		}
 
 		if(in_gnoob() && auto_have_familiar($familiar[Robortender]))
 		{
@@ -259,29 +286,19 @@ boolean L9_chasmBuild()
 			}
 		}
 
-		foreach it in $items[Loadstone, Logging Hatchet]
+		if(fastenerCount() < bridgeGoal())
 		{
-			autoEquip(it);
+			autoEquip($item[Loadstone]);
+		}
+		if(lumberCount() < bridgeGoal())
+		{
+			autoEquip($item[Logging Hatchet]);
 		}
 
-		autoAdv(1, $location[The Smut Orc Logging Camp]);
-
-		if(item_amount($item[Smut Orc Keepsake Box]) > 0)
-		{
-			if(!in_glover())
-			{
-				use(1, $item[Smut Orc Keepsake Box]);
-			}
-		}
-		visit_url("place.php?whichplace=orc_chasm&action=bridge"+(to_int(get_property("chasmBridgeProgress"))));
-		if(get_property("chasmBridgeProgress").to_int() >= 30)
-		{
-			visit_url("place.php?whichplace=highlands&action=highlands_dude");
-		}
-		return true;
+		return;
 	}
 
-	int need = (30 - get_property("chasmBridgeProgress").to_int()) / 5;
+	int need = (bridgeGoal() - get_property("chasmBridgeProgress").to_int()) / 5;
 	if(need > 0)
 	{
 		while((need > 0) && (item_amount($item[Snow Berries]) >= 2))
@@ -292,25 +309,66 @@ boolean L9_chasmBuild()
 		}
 	}
 
-	if (get_property("chasmBridgeProgress").to_int() < 30)
+	if (get_property("chasmBridgeProgress").to_int() < bridgeGoal())
 	{
-		foreach it in $items[Loadstone, Logging Hatchet]
+		if(fastenerCount() < bridgeGoal())
 		{
-			autoEquip(it);
+			autoEquip($item[Loadstone]);
+		}
+		if(lumberCount() < bridgeGoal())
+		{
+			autoEquip($item[Logging Hatchet]);
 		}
 
-		autoAdv(1, $location[The Smut Orc Logging Camp]);
-		if(item_amount($item[Smut Orc Keepsake Box]) > 0)
-		{
-			if(!in_glover())
-			{
-				use(1, $item[Smut Orc Keepsake Box]);
-			}
-		}
-		visit_url("place.php?whichplace=orc_chasm&action=bridge"+(to_int(get_property("chasmBridgeProgress"))));
+		return;
+	}
+}
+
+boolean L9_chasmBuild()
+{
+	if (internalQuestStatus("questL09Topping") != 0 || get_property("chasmBridgeProgress").to_int() >= bridgeGoal())
+	{
+		return false;
+	}
+
+	if(finishBuildingSmutOrcBridge())
+	{
 		return true;
 	}
-	visit_url("place.php?whichplace=highlands&action=highlands_dude");
+	
+	if (auto_inRonin() || auto_haveMayamCalendar() || auto_haveSeptEmberCenser())
+	{
+		if (auto_waitForDay2())
+		{
+			auto_log_debug("Delaying Logging Camp waiting for day 2.");
+			return false;
+		}
+	}
+
+	if (shenShouldDelayZone($location[The Smut Orc Logging Camp]))
+	{
+		auto_log_debug("Delaying Logging Camp in case of Shen.");
+		return false;
+	}
+	if(robot_delay("chasm"))
+	{
+		return false;	//delay for You, Robot path
+	}
+	if(auto_hasAutumnaton() && !isAboutToPowerlevel() && $location[The Smut Orc Logging Camp].turns_spent > 0 
+		&& (fastenerCount() < bridgeGoal() || lumberCount() < bridgeGoal()))
+	{
+		// delay zone to allow autumnaton to grab bridge parts
+		// unless we have ran out of other stuff to do
+		return false;
+	}
+
+	if (LX_loggingHatchet()) { return true; } // turn free, might save some adventures. May as well get it if we can.
+
+	auto_log_info("Chasm time", "blue");
+
+	// prepareForSmutOrcs() called in pre-adv
+	autoAdv(1, $location[The Smut Orc Logging Camp]);
+
 	return true;
 }
 
@@ -337,13 +395,19 @@ boolean L9_aBooPeak()
 	}
 	int clueAmt = item_amount(clue);
 
+	if(is_professor() && clueAmt >= 3)
+	{
+		return false; // We have clues but we can't survive them so not worth trying when we only have 1 hp
+	}
+
 	if (get_property("booPeakProgress").to_int() > 90)
 	{
 		auto_log_info("A-Boo Peak (initial): " + get_property("booPeakProgress"), "blue");
 
 		if (clueAmt < 3)
 		{
-			januaryToteAcquire($item[Broken Champagne Bottle]);
+			// boo clues have 15% drop
+			provideItem(567, $location[A-Boo Peak], false);
 		}
 
 		return autoAdv(1, $location[A-Boo Peak]);
@@ -380,13 +444,11 @@ boolean L9_aBooPeak()
 	boolean clueCheck = ((clueAmt > 0) || (get_property("auto_aboopending").to_int() != 0));
 	if (get_property("auto_abooclover").to_boolean() && get_property("booPeakProgress").to_int() >= 30 && booCloversOk)
 	{
-		cloverUsageInit();
-		autoAdvBypass(296, $location[A-Boo Peak]);
-		if(cloverUsageFinish())
+		if (autoLuckyAdv($location[A-Boo Peak]))
 		{
 			set_property("auto_abooclover", false);
+			return true;
 		}
-		return true;
 	}
 	else if (clueCheck && (get_property("booPeakProgress").to_int() > 2))
 	{
@@ -400,7 +462,7 @@ boolean L9_aBooPeak()
 			lihcface = "-equip lihc face";
 		}
 		string parrot = ", switch exotic parrot, switch mu, switch trick-or-treating tot";
-		if(!canChangeFamiliar())
+		if(!canChangeFamiliar() || in_avantGuard())
 		{
 			parrot = "";
 		}
@@ -413,9 +475,9 @@ boolean L9_aBooPeak()
 
 		//	Do we need to manually adjust for the parrot?
 
-		if(black_market_available() && (item_amount($item[Can of Black Paint]) == 0) && (have_effect($effect[Red Door Syndrome]) == 0) && (my_meat() >= npc_price($item[Can of Black Paint])))
+		if(black_market_available() && (item_amount($item[Can of Black Paint]) == 0) && (have_effect($effect[Red Door Syndrome]) == 0) && (my_meat() >= npc_price($item[Can of Black Paint])) && !is_werewolf())
 		{
-			buyUpTo(1, $item[Can of Black Paint]);
+			auto_buyUpTo(1, $item[Can of Black Paint]);
 			coldResist += 2;
 			spookyResist += 2;
 		}
@@ -525,10 +587,15 @@ boolean L9_aBooPeak()
 		{
 			doThisBoo = true;
 		}
+		//do clue if it is one of the last things to do
+		if(isAboutToPowerlevel() && my_level() >= 13)
+		{
+			doThisBoo = true;
+		}
 
 		if(doThisBoo)
 		{
-			buffMaintain($effect[Go Get \'Em\, Tiger!], 0, 1, 1);
+			buffMaintain($effect[Go Get \'Em\, Tiger!]);
 			bat_formMist();
 			if(0 == have_effect($effect[Mist Form]))
 			{
@@ -539,26 +606,32 @@ boolean L9_aBooPeak()
 
 			buffMaintain($effect[Astral Shell], 10, 1, 1);
 			buffMaintain($effect[Elemental Saucesphere], 10, 1, 1);
+			buffMaintain($effect[Scariersauce], 10, 1, 1);
 			buffMaintain($effect[Scarysauce], 10, 1, 1);
-			buffMaintain($effect[Spookypants], 0, 1, 1);
-			buffMaintain($effect[Hyphemariffic], 0, 1, 1);
-			buffMaintain($effect[Insulated Trousers], 0, 1, 1);
-			buffMaintain($effect[Balls of Ectoplasm], 0, 1, 1);
-			buffMaintain($effect[Red Door Syndrome], 0, 1, 1);
-			buffMaintain($effect[Well-Oiled], 0, 1, 1);
+			buffMaintain($effect[Spookypants]);
+			buffMaintain($effect[Hyphemariffic]);
+			buffMaintain($effect[Insulated Trousers]);
+			buffMaintain($effect[Balls of Ectoplasm]);
+			buffMaintain($effect[Red Door Syndrome]);
+			buffMaintain($effect[Well-Oiled]);
 
-			auto_beachCombHead("cold");
-			auto_beachCombHead("spooky");
+			if(auto_is_valid($effect[Cold as Nice]))
+			{
+				auto_beachCombHead("cold");
+			}
+			if(auto_is_valid($effect[Does It Have a Skull In There??]))			
+			{
+				auto_beachCombHead("spooky");
+			}
 
 			set_property("choiceAdventure611", "1");
 			
 			if(get_property("auto_aboopending").to_int() == 0)
 			{
-				if(item_amount(clue) > 0)
+				if(item_amount(clue) > 0 && use(1, clue))
 				{
-					use(1, clue);
+					set_property("auto_aboopending", my_turncount());
 				}
-				set_property("auto_aboopending", my_turncount());
 			}
 			if(canChangeToFamiliar($familiar[Trick-or-Treating Tot]))
 			{
@@ -588,14 +661,20 @@ boolean L9_aBooPeak()
 				{
 					auto_log_warning("Wandering adventure interrupt of A-Boo Peak, refreshing inventory.", "red");
 					cli_execute("refresh inv");
+					if($strings[Battlie Knight Ghost,Claybender Sorcerer Ghost,Dusken Raider Ghost,Space Tourist Explorer Ghost,Whatsian Commando Ghost] 
+					contains get_property("lastEncounter"))	//clue usage probably failed somehow
+					{
+						catch use(1, clue);		//will not be consumed if a clue is already active
+					}
 				}
 				else
 				{
 					set_property("auto_aboopending", 0);
 				}
 			}
-			acquireHP();
-			if ((my_hp() * 4) < my_maxhp() && item_amount($item[Scroll of Drastic Healing]) > 0 && (!isActuallyEd() || my_class() != $class[Vampyre]))
+			set_property("_auto_forcePokefamRestore", true);
+			acquireFullHP();
+			if ((my_hp() * 4) < my_maxhp() && item_amount($item[Scroll of Drastic Healing]) > 0 && (!isActuallyEd() || !in_darkGyffte()))
 			{
 				use(1, $item[Scroll of Drastic Healing]);
 			}
@@ -611,7 +690,8 @@ boolean L9_aBooPeak()
 	{
 		if ($location[A-Boo Peak].turns_spent < 10)
 		{
-			januaryToteAcquire($item[Broken Champagne Bottle]);
+			// boo clues have 15% drop
+			provideItem(567, $location[A-Boo Peak], false);
 		}
 
 		autoAdv(1, $location[A-Boo Peak]);
@@ -619,6 +699,101 @@ boolean L9_aBooPeak()
 
 		return true;
 	}
+	return false;
+}
+
+int hedgeTrimmersNeeded()
+{
+	int twinPeakProgress = get_property("twinPeakProgress").to_int();
+	boolean needStench = ((twinPeakProgress & 1) == 0);
+	boolean needFood = ((twinPeakProgress & 2) == 0);
+	boolean needJar = ((twinPeakProgress & 4) == 0);
+	boolean needInit = (needStench || needFood || needJar || (twinPeakProgress == 7));
+	int neededTrimmers = -(item_amount($item[rusty hedge trimmers]));
+	if(needStench) neededTrimmers++;
+	if(needFood) neededTrimmers++;
+	if(needJar) neededTrimmers++;
+	if(needInit) neededTrimmers++;
+
+	return neededTrimmers;
+}
+
+// returns true if can successfully do one of the tasks at the great overlook lodge NC (606)
+boolean prepareForTwinPeak(boolean speculative)
+{
+	int progress = get_property("twinPeakProgress").to_int();
+	boolean needStench = ((progress & 1) == 0);
+	boolean needFood = ((progress & 2) == 0);
+	boolean needJar = ((progress & 4) == 0);
+	boolean needInit = (progress == 7);
+
+	if(needInit)
+	{
+		if(provideInitiative(40, $location[Twin Peak], true, speculative) >= 40)
+		{
+			return true;
+		}
+		else
+		{
+			//init test shows up last. if we can't do it there is no point in checking rest of function.
+			return false;
+		}
+	}
+
+	if(needJar && item_amount($item[Jar of Oil]) >= 1)
+	{
+		return true;
+	}
+
+	if(needFood)
+	{
+		float food_drop = item_drop_modifier() + numeric_modifier("Food Drop");
+		food_drop -= auto_famModifiers("Item Drop");
+		
+		if(my_servant() == $servant[Cat])
+		{
+			food_drop -= numeric_modifier($familiar[Baby Gravy Fairy], "Item Drop", $servant[Cat].level, $item[none]);
+		}
+		if((food_drop < 50) && (food_drop >= 20) && have_effect($effect[Brother Flying Burrito\'s Blessing]) == 0)
+		{
+			if(friars_available() && (!get_property("friarsBlessingReceived").to_boolean()) && !speculative)
+			{
+				cli_execute("friars food");
+			}
+			if(have_effect($effect[Brother Flying Burrito\'s Blessing]) > 0)
+			{
+				food_drop = food_drop + 30;
+			}
+		}
+		if((food_drop < 50.0) && (item_amount($item[Eagle Feather]) > 0) && (have_effect($effect[Eagle Eyes]) == 0) && auto_is_valid($item[Eagle Feather]))
+		{
+			if(!speculative) use(1, $item[Eagle Feather]);
+			food_drop = food_drop + 20;
+		}
+		if((food_drop < 50.0) && (item_amount($item[resolution: be happier]) > 0) && (have_effect($effect[Joyful Resolve]) == 0) && auto_is_valid($item[resolution: be happier]))
+		{
+			if(!speculative) buffMaintain($effect[Joyful Resolve]);
+			food_drop = food_drop + 15;
+		}
+		if(food_drop >= 50.0)
+		{
+			return true;
+		}
+	}
+
+	if(needStench)
+	{
+		int [element] resGoal;
+		resGoal[$element[stench]] = 4;
+		// check if we can get enough stench res before we start applying anything
+		int [element] resPossible = provideResistances(resGoal, $location[Twin Peak], true, true, true);
+		if(resPossible[$element[stench]] >= 4)
+		{
+			if(!speculative) provideResistances(resGoal, $location[Twin Peak], true, true, false);
+			return true;
+		}
+	}
+
 	return false;
 }
 
@@ -633,18 +808,15 @@ boolean L9_twinPeak()
 	{
 		return false;
 	}
-	
-	//set fixed NC values
-	set_property("choiceAdventure604", "1");	//welcome NC to twin peak step 1 = "continue"
-	set_property("choiceAdventure605", "1");	//welcome NC to twin peak step 2 = "everything goes black"
-	set_property("choiceAdventure607", "1");	//finish stench / room 237
-	set_property("choiceAdventure608", "1");	//finish food drop / pantry
-	set_property("choiceAdventure609", "1");	//do jar of oil / sound of music... goto 616
-	set_property("choiceAdventure616", "1");	//finish jar of oil / sound of music
-	set_property("choiceAdventure610", "1");	//do init / "who's that" / "to catch a killer"... goto 1056
-	set_property("choiceAdventure1056", "1");	//finish init / "now it's dark"
-	set_property("choiceAdventure618", "2");	//burn this hotel pity NC to skip the zone if you spent over 50 adventures there.
-	
+
+	if(hedgeTrimmersNeeded() > 0 && auto_autumnatonCanAdv($location[Twin Peak]) && !isAboutToPowerlevel() && 
+		($location[Twin Peak].turns_spent > 0 || get_property("twinPeakProgress").to_int() > 0)) // using trimmers doesn't increment turns_spent, so look at quest status also
+	{
+		// delay zone to allow autumnaton to grab rusty hedge trimmers
+		// unless we have ran out of other stuff to do
+		return false;
+	}
+		
 	//main lodge NC. we swap around this value multiple times. initially set to 0 to prevent mistakes.
 	set_property("choiceAdventure606", "0");	
 
@@ -654,102 +826,29 @@ boolean L9_twinPeak()
 		handleBjornify($familiar[Grimstone Golem]);
 	}
 	
-	buffMaintain($effect[Fishy Whiskers], 0, 1, 1);		//heavy rains specific reduce item drop penalty by 10%
+	buffMaintain($effect[Fishy Whiskers]);		//heavy rains specific reduce item drop penalty by 10%
 	//BHY specific prevent wandering bees from skipping the burning the hotel down choice and wasting turns
-	buffMaintain($effect[Float Like a Butterfly, Smell Like a Bee], 0, 1, 1);
+	buffMaintain($effect[Float Like a Butterfly, Smell Like a Bee]);
 	
 	if(in_bhy())
 	{
 		// we can't make an oil jar to solve the quest, just adventure until the hotel is burned down
-		set_property("choiceAdventure606", "6"); // and flee the music NC
 		return autoAdv($location[Twin Peak]);
 	}
 
-	int progress = get_property("twinPeakProgress").to_int();
-	boolean needStench = ((progress & 1) == 0);
-	boolean needFood = ((progress & 2) == 0);
-	boolean needJar = ((progress & 4) == 0);
-	boolean needInit = (progress == 7);
-
-	boolean attempt = false;
-	if(!attempt && needInit)
+	if(!prepareForTwinPeak(true))
 	{
-		if(provideInitiative(40,true))
-		{
-			set_property("choiceAdventure606", "4");
-			attempt = true;
-		}
-		else
-		{
-			return false;			//init test shows up last. if we can't do it there is no point in checking rest of function.
-		}
-	}
-
-	if(!attempt && needJar)
-	{
-		if(item_amount($item[Jar of Oil]) == 1)
-		{
-			set_property("choiceAdventure606", "3");
-			attempt = true;
-		}
-	}
-
-	if(!attempt && needFood)
-	{
-		float food_drop = item_drop_modifier();
-		food_drop -= numeric_modifier(my_familiar(), "Item Drop", familiar_weight(my_familiar()), equipped_item($slot[familiar]));
-		
-		if(my_servant() == $servant[Cat])
-		{
-			food_drop -= numeric_modifier($familiar[Baby Gravy Fairy], "Item Drop", $servant[Cat].level, $item[none]);
-		}
-		if((food_drop < 50) && (food_drop >= 20))
-		{
-			if(friars_available() && (!get_property("friarsBlessingReceived").to_boolean()))
-			{
-				cli_execute("friars food");
-			}
-		}
-		if(have_effect($effect[Brother Flying Burrito\'s Blessing]) > 0)
-		{
-			food_drop = food_drop + 30;
-		}
-		if((food_drop < 50.0) && (item_amount($item[Eagle Feather]) > 0) && (have_effect($effect[Eagle Eyes]) == 0))
-		{
-			use(1, $item[Eagle Feather]);
-			food_drop = food_drop + 20;
-		}
-		if((food_drop < 50.0) && (item_amount($item[resolution: be happier]) > 0) && (have_effect($effect[Joyful Resolve]) == 0))
-		{
-			buffMaintain($effect[Joyful Resolve], 0, 1, 1);
-			food_drop = food_drop + 15;
-		}
-		if(food_drop >= 50.0)
-		{
-			set_property("choiceAdventure606", "2");
-			attempt = true;
-		}
-	}
-
-	if(!attempt && needStench)
-	{
-		int [element] resGoal;
-		resGoal[$element[stench]] = 4;
-		// check if we can get enough stench res before we start applying anything
-		int [element] resPossible = provideResistances(resGoal, true, true);
-		if(resPossible[$element[stench]] >= 4)
-		{
-			provideResistances(resGoal, true);
-			set_property("choiceAdventure606", "1");
-			attempt = true;
-		}
-	}
-
-	if(!attempt)
-	{
+		auto_log_debug("Can't complete any task at the Great Overlook Lodge. Will come back to Twin Peak later");
 		return false;
 	}
+
 	auto_log_info("Twin Peak", "blue");
+
+	if(item_amount($item[Rusty Hedge Trimmers]) == 0 && $location[Twin Peak].turns_spent == 0 && auto_hasAutumnaton())
+	{
+		// wish for trimmer so we can later send fallbot for the rest
+		auto_makeMonkeyPawWish($item[Rusty Hedge Trimmers]);
+	}
 
 	int starting_trimmers = item_amount($item[Rusty Hedge Trimmers]);
 	if(starting_trimmers > 0)
@@ -790,6 +889,10 @@ boolean L9_twinPeak()
 			return false;
 		}
 	}
+	if(auto_haveGreyGoose()){
+		auto_log_info("Bringing the Grey Goose to emit some drones to get some hedge trimmers.");
+		handleFamiliar($familiar[Grey Goose]);
+	}
 	return autoAdv($location[Twin Peak]);
 }
 
@@ -807,32 +910,45 @@ boolean L9_oilPeak()
 		return false;
 	}
 
-	if (contains_text(visit_url("place.php?whichplace=highlands"), "fire3.gif"))
+	if(is_professor())
+	{
+		return false; //can't do Oil Peak as a Professor
+	}
+
+	if(contains_text(visit_url("place.php?whichplace=highlands"), "fire3.gif"))
 	{
 		int oilProgress = get_property("twinPeakProgress").to_int();
 		boolean needJar = ((oilProgress & 4) == 0) && item_amount($item[Jar Of Oil]) == 0;
-		if (!needJar || in_bhy())
+		if(!needJar || in_bhy())
 		{
 			return false;
 		}
-		else if (item_amount($item[Bubblin' Crude]) >= 12)
+		else if(item_amount($item[Bubblin\' Crude]) >= 12)
 		{
-			if (in_glover())
+			if(in_glover())
 			{
-				if (item_amount($item[Crude Oil Congealer]) < 1 && item_amount($item[G]) > 2)
-				{
-					buy($coinmaster[G-Mart], 1, $item[Crude Oil Congealer]);
-				}
-				if (item_amount($item[Crude Oil Congealer]) > 0)
+				if(item_amount($item[Crude Oil Congealer]) > 0)
 				{
 					use(1, $item[Crude Oil Congealer]);
 				}
+				else
+				{
+					if(item_amount($item[G]) > 2)
+					{
+						buy($coinmaster[G-Mart], 1, $item[Crude Oil Congealer]);
+						use(1, $item[Crude Oil Congealer]);
+					}
+					else
+					{
+						return false;
+					}
+				}
 			}
-			else if (auto_is_valid($item[Bubblin' Crude]) && creatable_amount($item[Jar Of Oil]) > 0)
+			else if(auto_is_valid($item[Bubblin\' Crude]) && creatable_amount($item[Jar Of Oil]) > 0)
 			{
 				create(1, $item[Jar Of Oil]);
 			}
-			if (item_amount($item[Jar Of Oil]) > 0)
+			if(item_amount($item[Jar Of Oil]) > 0)
 			{
 				return true;
 			}
@@ -840,17 +956,13 @@ boolean L9_oilPeak()
 		auto_log_info("Oil Peak is finished but we need more crude!", "blue");
 	}
 
-	buffMaintain($effect[Fishy Whiskers], 0, 1, 1);
+	buffMaintain($effect[Fishy Whiskers]);
 
 	auto_MaxMLToCap(auto_convertDesiredML(100), true);
 
-	if (isActuallyEd() && get_property("auto_dickstab").to_boolean())
-	{
-		buffMaintain($effect[The Dinsey Look], 0, 1, 1);
-	}
 	if(monster_level_adjustment() < 50)
 	{
-		buffMaintain($effect[The Dinsey Look], 0, 1, 1);
+		buffMaintain($effect[The Dinsey Look]);
 	}
 	if((monster_level_adjustment() < 60))
 	{
@@ -867,7 +979,8 @@ boolean L9_oilPeak()
 	// Maximize Asdon usage
 	if((have_effect($effect[Driving Recklessly]) == 0) && (have_effect($effect[Driving Wastefully]) == 0))
 	{
-		if((((simMaximizeWith("1000ml 75min")) && (!simMaximizeWith("1000ml 100min"))) || ((simMaximizeWith("1000ml 25min")) && (!simMaximizeWith("1000ml 50min"))) || (!simMaximizeWith("1000ml 11min"))) && (have_effect($effect[Driving Wastefully]) == 0))
+		location loc = $location[Oil Peak];
+		if((((simMaximizeWith(loc, "1000ml 75min")) && (!simMaximizeWith(loc, "1000ml 100min"))) || ((simMaximizeWith(loc, "1000ml 25min")) && (!simMaximizeWith(loc, "1000ml 50min"))) || (!simMaximizeWith(loc, "1000ml 11min"))) && (have_effect($effect[Driving Wastefully]) == 0))
 		{
 			asdonBuff($effect[Driving Recklessly]);
 		}
@@ -904,7 +1017,7 @@ boolean L9_highLandlord()
 	{
 		return false;
 	}
-	if(get_property("chasmBridgeProgress").to_int() < 30)
+	if(get_property("chasmBridgeProgress").to_int() < bridgeGoal())
 	{
 		return false;
 	}

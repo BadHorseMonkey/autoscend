@@ -165,6 +165,7 @@ static string __RESTORE_ALL = "all";
 static string __RESTORE_HALF = "half";
 static string __RESTORE_SCALING = "scaling";
 static string __HOT_TUB = "a relaxing hot tub";
+static string __NUNS = "the nunnery";
 
 /**
  * Parse autoscend_restoration.txt into __known_restoration_sources.
@@ -243,7 +244,7 @@ void __init_restoration_metadata()
 		string[string,string,string,string,string,string,string,string] raw_data;
 		file_to_map(resotration_filename, raw_data);
 
-		foreach type in $strings[item,skill,clan,dwelling]
+		foreach type in $strings[item,skill,clan,dwelling,place]
 		{
 			foreach idx,name,hp_restored,mp_restored,soft_reserve_limit,hard_reserve_limit,removes_effects,gives_effects in raw_data[type]
 			{
@@ -261,6 +262,22 @@ void __init_restoration_metadata()
 				parsed.gives_effects = parse_effects(parsed.name, gives_effects);
 
 				__known_restoration_sources[parsed.name] = parsed;
+			}
+		}
+
+		// add mp restore to nunnery if did as fratboy
+		if(get_property("sidequestNunsCompleted") == "fratboy")
+		{
+			__known_restoration_sources["the nunnery"].mp_restored = 1000;
+		}
+
+		if(my_path() == $path[Disguises Delimit])
+		{	
+			//shadow has double HP in this path so larger reserve needed
+			foreach specialname in $strings[gauze garter,filthy poultice]
+			{	__RestorationMetadata parsedSpecial = __known_restoration_sources[specialname];
+				if(parsedSpecial.hard_reserve_limit < 4) continue;
+				parsedSpecial.hard_reserve_limit += 4;	//shallow copy passes edit
 			}
 		}
 	}
@@ -506,6 +523,11 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 			restored_amount += numeric_modifier("Bonus Resting MP");
 		}
 
+		if (metadata.name == "disco nap" && auto_haveAprilShowerShield() && get_property("_aprilShowerDiscoNap").to_int() < 5 && my_mp() > mp_cost($skill[disco nap]))
+		{
+			restored_amount = 100 - 20 * get_property("_aprilShowerDiscoNap").to_int();
+		}
+
 		return restored_amount;
 	}
 
@@ -660,11 +682,28 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 		}
 		else if(metadata.type == "skill")
 		{
-			available = floor(get_value("mp_starting") / mp_cost(to_skill(metadata.name)));
+			int dailyLimit = to_skill(metadata.name).dailylimit;
+			int mpCost = mp_cost(to_skill(metadata.name));
+			if(dailyLimit != -1 && mpCost > 0)
+			{
+				available = min(dailyLimit, floor(get_value("mp_starting") / mpCost));
+			}
+			else if(dailyLimit != -1)
+			{
+				available = dailyLimit;
+			}
+			else
+			{
+				available = floor(get_value("mp_starting") / mpCost);
+			}
 		}
 		else if(metadata.name == __HOT_TUB)
 		{
 			available = hotTubSoaksRemaining();
+		}
+		else if(metadata.name == __NUNS)
+		{
+			available = 3 - get_property("nunsVisits").to_int();
 		}
 		return max(0.0, available);
 	}
@@ -888,6 +927,10 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 		{
 			return isHotTubAvailable();
 		}
+		if(metadata.name == __NUNS)
+		{
+			return get_property("sidequestNunsCompleted") != "none";
+		}
 		return true;
 	}
 
@@ -896,6 +939,9 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 		if(metadata.type == "item")
 		{
 			item i = to_item(metadata.name);
+			if (i.dailyusesleft == 0) {
+				return false;
+			}
 			boolean mall_buyable = can_interact() && auto_mall_price(i) > 0;
 			boolean npc_meat_buyable = npc_price(i) > 0;
 			boolean coinmaster_buyable = i.seller != $coinmaster[none] && is_accessible(i.seller) && get_property("autoSatisfyWithCoinmasters").to_boolean();
@@ -915,6 +961,10 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 		{
 			return hotTubSoaksRemaining() > 0;
 		}
+		if(metadata.name == __NUNS)
+		{
+			return get_property("nunsVisits").to_int() < 3;
+		}
 		return true;
 	}
 
@@ -926,6 +976,10 @@ __RestorationOptimization __calculate_objective_values(int hp_goal, int mp_goal,
 		if(metadata.type == "skill")
 		{
 			skill s = to_skill(metadata.name);
+			if(s.dailylimit != -1)
+			{
+				return s.dailylimit > 0;
+			}
 			if(my_maxmp() >= mp_cost(s))
 			{
 				return true;
@@ -1530,11 +1584,18 @@ boolean __restore(string resource_type, int goal, int meat_reserve, boolean useF
 			int pre_soaks = hotTubSoaksRemaining();
 			return doHottub() == pre_soaks - 1;
 		}
+		if(metadata.name == __NUNS)
+		{
+			int pre_visits = get_property("nunsVisits").to_int();
+			cli_execute("nuns");
+			int post_visits = get_property("nunsVisits").to_int();
+			return pre_visits == post_visits - 1;
+		}
 
 		if(metadata.type == "skill")
 		{
 			skill s = to_skill(metadata.name);
-			if(my_mp() < mp_cost(s) && !acquireMP(mp_cost(s), meat_reserve, useFreeRests))
+			if(my_mp() < mp_cost(s) && !acquireMP(mp_cost(s), 0, useFreeRests))
 			{
 				auto_log_warning("Couldnt acquire enough MP to cast " + s, "red");
 				return false;
@@ -1578,6 +1639,17 @@ boolean __restore(string resource_type, int goal, int meat_reserve, boolean useF
 		return negative;
 	}
 
+	void recover_discount_pants()
+	{
+		foreach discountpants in $items[designer sweatpants,Travoltan trousers]
+		{
+			if(closet_amount(discountpants) > 0)
+			{
+				take_closet(1,discountpants);
+			}
+		}
+	}
+
 	auto_log_info("Target "+resource_type+" => "+goal+" - Considering restore options at " + my_hp() + "/" + my_maxhp() + " HP with " + my_mp() + "/" + my_maxmp() + " MP", "blue");
 	auto_log_info("Active Negative Effects => " + list_to_string(negative_effects()));
 
@@ -1598,12 +1670,38 @@ boolean __restore(string resource_type, int goal, int meat_reserve, boolean useF
 			}
 			print("Aborting due to restore failure... you can override this setting for today by entering in gCLI:" ,"blue");
 			print("set _auto_ignoreRestoreFailureToday = true" ,"blue");
+			print("You can override this setting forever by entering in gCLI:" ,"blue");
+			print("set auto_ignoreRestoreFailure = true" ,"blue");
 			abort();
 		}
 
 		boolean success = false;
 		foreach i, o in options
 		{
+			if(o.metadata.type == "item" && item_amount(to_item(o.metadata.name)) == 0)	//prevent infinite loop by discount pants when buying from NPC store
+			{
+				foreach discountpants in $items[designer sweatpants,Travoltan trousers]
+				{
+					if(item_amount(discountpants) > 0)
+					{
+						boolean mustnotpants = false;
+						cli_execute("whatif equip " + discountpants + "; quiet");
+						if(resource_type == "hp" && goal > numeric_modifier("_spec", "Buffed HP Maximum"))
+						{
+							mustnotpants = true;
+						}
+						if(resource_type == "mp" && goal > numeric_modifier("_spec", "Buffed MP Maximum"))
+						{
+							mustnotpants = true;
+						}
+						if(mustnotpants)
+						{
+							auto_log_info("Avoiding any discount pants restore loops");
+							put_closet(1,discountpants);	//yes this was the recommended and only? way to make mafia not auto equip the discount pants
+						}
+					}
+				}
+			}
 			use_opportunity_blood_skills(o.vars["hp_restored_per_use"], my_hp()+o.vars["hp_total_restored"]);
 			success = use_restore(o.metadata, meat_reserve, useFreeRests);
 			if(success)
@@ -1618,10 +1716,26 @@ boolean __restore(string resource_type, int goal, int meat_reserve, boolean useF
 
 		if(!success)
 		{
+			// did we have exactly one option and fail to cast rest upside down because we have a back item with +HP/MP?
+			if (count(options) == 1 && options[0].metadata.name == "rest upside down") {
+				item current_back = equipped_item($slot[back]);
+				// do we have less than max minus what the back item provides
+				if (current_resource() < max_resource() - numeric_modifier(current_back, "Maximum " + resource_type))
+				{
+					auto_log_info("Manually equipping the bat wings");
+					equip($item[bat wings]);
+					recover_discount_pants();
+					success = use_skill(1, $skill[rest upside down]);
+					equip(current_back);
+					return success;
+				}
+			}
 			auto_log_warning("Target "+resource_type+" => " + goal + " - Uh oh. All restore options tried ("+count(options)+") failed. Sorry.", "red");
+			recover_discount_pants();
 			return false;
 		}
 	}
+	recover_discount_pants();
 	return true;
 }
 
@@ -1695,9 +1809,13 @@ boolean acquireMP(int goal, int meat_reserve)
 boolean acquireMP(int goal, int meat_reserve, boolean useFreeRests)
 {
 	//vampyres don't use MP
-	if(my_class() == $class[Vampyre])
+	if(in_darkGyffte())
 	{
 		return false;
+	}
+	else if (in_zombieSlayer()) // zombies have hordes not mp
+	{
+		return zombieSlayer_acquireMP(goal, meat_reserve);
 	}
 
 	boolean isMax = (goal == my_maxmp());
@@ -1717,6 +1835,19 @@ boolean acquireMP(int goal, int meat_reserve, boolean useFreeRests)
 		return true;
 	}
 
+	//since we need to restore, lets reduce MP cost of future skills
+	buffMaintain($effect[The Odour of Magick]);
+	buffMaintain($effect[Using Protection]);
+	//also use items/skills which give free mp regen
+	buffMaintain($effect[Tingly Tongue]);
+	buffMaintain($effect[Tingling Insides]);
+	buffMaintain($effect[Wisdom of the Autumn Years]);
+	if(auto_equipAprilShieldBuff() && !(get_property("_aprilShowerSimmer").to_boolean()))
+	{
+		//Free mp regen on the first cast of the day with the April Shower Thoughts Shield equipped
+		buffMaintain($effect[Simmering]);
+	}
+
 	// Sausages restore 999MP, this is a pretty arbitrary cutoff but it should reduce pain
 	// TODO: move this to general effectiveness method
 	if(my_maxmp() - my_mp() > 300)
@@ -1731,6 +1862,62 @@ boolean acquireMP(int goal, int meat_reserve, boolean useFreeRests)
 			goal = min(goal, my_maxmp());
 		}
 	}
+	
+	// 5 Soulsauce restores 15 MP and only has opportunity cost against its other uses as buff or combat stun
+	// unless objective value of combat stun exists there is no way to compare to other restore methods so it's always the best if available?
+	if(my_class() == $class[Sauceror])
+	{
+		int MPtoRestore = goal - my_mp();
+		int casts = ceil(MPtoRestore.to_float() / 15.0);	//soul food restores 15 MP per cast.
+		casts = min(casts, my_soulsauce() / 5);	//soul food costs 5 soulsauce per cast.
+		if(casts > 0)
+		{
+			int excessMP = my_mp() + 15*casts - my_maxmp();	//if some of the restored MP would be wasted over max
+			if(excessMP > 0)	//try to burn the excess on buffs
+			{
+				if(my_mp() < excessMP && casts > 1)	//can't burn MP we don't have yet
+				{
+					casts -= 1;
+					use_skill(1, $skill[Soul Food]);
+				}
+				if(my_mp() > 0)
+				{
+					auto_burnMP(min(excessMP,my_mp()));
+				}
+			}
+			use_skill(casts, $skill[Soul Food]);
+			if(my_mp() >= goal)
+			{
+				return true;
+			}
+		}
+	}
+	if (canUseSweatpants() && (getSweat() >= 95 || my_meat() < (meatReserve() + 500))) {
+		int MPtoRestore = goal - my_mp();
+		int casts = ceil(MPtoRestore.to_float() / 50.0);
+		casts = min(casts, (getSweat() - 90) / 5);
+		if (casts > 0) {
+			int excessMP = my_mp() + 50*casts - my_maxmp();	//if some of the restored MP would be wasted over max
+			if(excessMP > 0)	//try to burn the excess on buffs
+			{
+				if(my_mp() < excessMP && casts > 1)	//can't burn MP we don't have yet
+				{
+					casts -= 1;
+					use_skill(1, $skill[Sip Some Sweat]);
+				}
+				if(my_mp() > 0)
+				{
+					auto_burnMP(min(excessMP,my_mp()));
+				}
+			}
+			use_skill(casts, $skill[Sip Some Sweat]);
+			if(my_mp() >= goal)
+			{
+				return true;
+			}
+		}
+	}
+	
 	__restore("mp", goal, meat_reserve, useFreeRests);
 	return (my_mp() >= goal);
 }
@@ -1772,11 +1959,21 @@ boolean acquireMP(float goalPercent, int meat_reserve, boolean useFreeRests)
 }
 
 /**
- * Try to acquire your max hp (useFreeRests: true). Will also cure poisoned and beaten up before restoring any hp.
+ * Try to acquire the smaller of your max HP and 800 HP (useFreeRests: true). Will also cure poisoned and beaten up before restoring any hp.
  *
  * returns true if my_hp() >= my_maxhp() after attempting to restore.
  */
 boolean acquireHP()
+{
+	return acquireHP(min(my_maxhp(),800));
+}
+
+/**
+ * Try to acquire your max hp (useFreeRests: true). Will also cure poisoned and beaten up before restoring any hp.
+ *
+ * returns true if my_hp() >= my_maxhp() after attempting to restore.
+ */
+boolean acquireFullHP()
 {
 	return acquireHP(my_maxhp());
 }
@@ -1813,16 +2010,24 @@ boolean acquireHP(int goal, int meat_reserve, boolean useFreeRests)
 
 	//vampyres can only be restored using blood bags, which are too valuable to waste on healing HP.
 	//better to make food/drink from them and then rest in your coffin
-	if(my_class() == $class[Vampyre])
+	if(in_darkGyffte())
 	{
+		if(my_hp() == 0)
+		{
+			//if currently at 0, can't adventure. Use an adventure to rest in your coffin. Might as well check for skill changes
+			bat_reallyPickSkills(20);
+			return true;
+		}
 		return false;
 	}
 	
 	// HP is irrelevant in Pocket Familiars, this removes the function to restore HP
-	if(in_pokefam())
+	// except in the case of A-Boo Peak, meeting Dr. Awkward, and the hedge maze
+	if(in_pokefam() && !get_property("_auto_forcePokefamRestore").to_boolean())
 	{
 		return false;
 	}
+	set_property("_auto_forcePokefamRestore", false);
 
 	//owning a hand in glove breaks maxHP tracking. need to check possession rather than equipped because unequipping it also breaks it. in fact it causes us to get stuck in an infinite loop of trying to restore hp when already at max HP.
 	//mafia devs think it is actually a kol bug so they won't fix it. https://kolmafia.us/showthread.php?25214
@@ -1857,9 +2062,27 @@ boolean acquireHP(int goal, int meat_reserve, boolean useFreeRests)
 		return true;
 	}
 
-	if(in_boris())
+	buffMaintain($effect[extra-green]);
+
+	if(my_class() == $class[Pig Skinner] && have_skill($skill[Second Wind]))
+	{
+		return auto_pigSkinnerAcquireHP(0.7 * goal);
+	}
+	if(my_class() == $class[Cheese Wizard] && have_skill($skill[Emmental Elemental]))
+	{
+		return auto_cheeseWizardAcquireHP(goal - 0.3*my_buffedstat($stat[Moxie]));
+	}
+	if(my_class() == $class[Jazz Agent] && have_skill($skill[Grit Teeth]))
+	{
+		return auto_jazzAgentAcquireHP(goal - 60);
+	}
+	if(is_boris())
 	{
 		return borisAcquireHP(goal);
+	}
+	if (in_zombieSlayer())
+	{
+		return zombieSlayer_acquireHP(goal);
 	}
 	if (my_class() == $class[Plumber])
 	{
@@ -1868,9 +2091,23 @@ boolean acquireHP(int goal, int meat_reserve, boolean useFreeRests)
 			retrieve_item(1, $item[super deluxe mushroom]);
 			use(1, $item[super deluxe mushroom]);
 		}
+		if(my_hp() <= 10)
+		{
+			auto_log_info("Spending a turn to heal.");
+			visit_url("place.php?whichplace=mario&action=mush_saveblock");
+		}
 	}
 	else
 	{
+		// Simplifies restoration massively, make that our first choice
+		if (have_skill($skill[Cannelloni Cocoon]))
+		{
+			int coc_tries = 0;
+			while (goal-my_hp() > 20 && coc_tries++ < 3)
+			{
+				use_skill($skill[Cannelloni Cocoon]);
+			}
+		}
 		__restore("hp", goal, meat_reserve, useFreeRests);
 	}
 
@@ -1951,26 +2188,14 @@ int doRest()
 		case $stat[Muscle]:
 			replace = equipped_item($slot[off-hand]);
 			grab = $item[Fake Washboard];
-			if(can_equip($item[LOV Eardigan]) && (item_amount($item[LOV Eardigan]) > 0))
-			{
-				equip($slot[shirt], $item[LOV Eardigan]);
-			}
 			break;
 		case $stat[Mysticality]:
 			replace = equipped_item($slot[off-hand]);
 			grab = $item[Basaltamander Buckler];
-			if(can_equip($item[LOV Epaulettes]) && (item_amount($item[LOV Epaulettes]) > 0))
-			{
-				equip($slot[back], $item[LOV Epaulettes]);
-			}
 			break;
 		case $stat[Moxie]:
 			replace = equipped_item($slot[weapon]);
 			grab = $item[Backwoods Banjo];
-			if(can_equip($item[LOV Earrings]) && (item_amount($item[LOV Earrings]) > 0))
-			{
-				equip($slot[acc1], $item[LOV Earrings]);
-			}
 			break;
 		}
 
@@ -1984,6 +2209,8 @@ int doRest()
 			take_closet(1, grab);
 			equip(grab);
 		}
+
+		equipStatgainIncreasers(bonus, true);
 
 		visit_url("place.php?whichplace=chateau&action=chateau_restbox");
 
@@ -2001,6 +2228,10 @@ int doRest()
 		}
 
 	}
+	else if(is_professor())
+	{
+		visit_url("place.php?whichplace=wereprof_cottage&action=wereprof_sleep");
+	}
 	else
 	{
 		set_property("restUsingChateau", false);
@@ -2011,11 +2242,39 @@ int doRest()
 }
 
 boolean haveFreeRestAvailable(){
+	// save free rests to charge cincho
+	if(auto_haveCincho() && auto_nextRestOverCinch())
+	{
+		return false;
+	}
 	return get_property("timesRested").to_int() < total_free_rests();
 }
 
 int freeRestsRemaining(){
+	// save free rests to charge cincho
+	if(auto_haveCincho() && auto_nextRestOverCinch())
+	{
+		return 0;
+	}
 	return max(0, total_free_rests() - get_property("timesRested").to_int());
+}
+
+int auto_potentialMaxFreeRests()
+{
+	// return the number of free rests we could potentially have if we get all the stuff that gives them from IotMs.
+	// we can get the count of "intrinsic" free rests e.g perm'd skills & rests you get just from having something available in run
+	int potential = numeric_modifier("Free Rests");
+
+	if (auto_canUseJuneCleaver() && !possessEquipment($item[mother\'s necklace]))
+	{
+		potential += 5;
+	}
+	if (auto_haveBurningLeaves() && !(get_campground() contains $item[forest canopy bed]))
+	{
+		potential += 5;
+	}
+	// add more old stuff here. I only care about what is in 2023 Standard right now.
+	return potential;
 }
 
 boolean haveAnyIotmAlternativeRestSiteAvailable(){
@@ -2029,8 +2288,36 @@ boolean haveAnyIotmAlternativeRestSiteAvailable(){
  */
 boolean doFreeRest(){
 	if(haveFreeRestAvailable()){
+
+		// burn MP if possible prior to resting
+		int restorableMp = my_maxmp() - my_mp();
+		int mpToBurn = 0;
+		if (chateaumantegna_available() || auto_campawayAvailable()) // will restore at least 100 MP
+		{
+			mpToBurn = 100 - restorableMp;
+		} else if (get_dwelling() == $item[Frobozz Real-Estate Company Instant House (TM)])
+		{
+			mpToBurn = 40 - restorableMp;
+		} else if (get_dwelling() == $item[Newbiesport&trade; tent])
+		{
+			mpToBurn = 10 - restorableMp;
+		} else // assume resting on the ground
+		{
+			mpToBurn = 5 - restorableMp;
+		}
+
+		if (mpToBurn > 0)
+		{
+			auto_burnMP(mpToBurn);
+		}
+
+		// resting and success check
+		int hpMp_before = my_hp() + my_mp();
 		int rest_count = get_property("timesRested").to_int();
-		return doRest() > rest_count;
+		boolean result = doRest() > rest_count;
+		int hpMp_after = my_hp() + my_mp();
+		boolean success = (hpMp_after > hpMp_before) || result;
+		return success;
 	}
 	return false;
 }
@@ -2051,7 +2338,7 @@ boolean uneffect(effect toRemove)
 	{
 		return true;
 	}
-	if(($effects[Driving Intimidatingly, Driving Obnoxiously, Driving Observantly, Driving Quickly, Driving Recklessly, Driving Safely, Driving Stealthily, Driving Wastefully, Driving Waterproofly] contains toRemove) && (auto_get_campground() contains $item[Asdon Martin Keyfob]))
+	if(($effects[Driving Intimidatingly, Driving Obnoxiously, Driving Observantly, Driving Quickly, Driving Recklessly, Driving Safely, Driving Stealthily, Driving Wastefully, Driving Waterproofly] contains toRemove) && (auto_get_campground() contains $item[Asdon Martin keyfob (on ring)]))
 	{
 		visit_url("campground.php?pwd=&preaction=undrive");
 		return true;

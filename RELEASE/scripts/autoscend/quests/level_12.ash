@@ -1,3 +1,24 @@
+############################################
+/*
+Below are relevant locations for the war.
+war not started or finished with this side undefeated:
+[Frat House]
+[The Orcish Frat House (In Disguise)]	//r26631 changed from [Frat House In Disguise]
+[Hippy Camp]
+[The Hippy Camp (In Disguise)]	//r26631 changed from [Hippy Camp In Disguise]
+
+War started:
+[Wartime Frat House]
+[Wartime Frat House (Hippy Disguise)]
+[Wartime Hippy Camp]
+[Wartime Hippy Camp (Frat Disguise)]
+
+War finished & side defeated:
+[The Orcish Frat House (Bombed Back to the Stone Age)]
+[The Hippy Camp (Bombed Back to the Stone Age)]
+*/
+############################################
+
 void copy_warplan(WarPlan target, WarPlan source)
 {
 	//record A = B; does not copy the contents of B into record A, it instead copies memory references. Thus A merely becomes an alias for B and changing one changes the other as well.
@@ -79,30 +100,13 @@ int auto_warEnemiesRemaining()
 	// Returns the number of enemies left to defeat in the fratboy-hippy war.
 	
 	int enemiesRemaining = 1000;
-	if(in_pokefam())
+	if(auto_warSide() == "hippy")
 	{
-		//Pokefam only has 500 total to defeat with all 6 sidequests immediately accessible.
-		//TODO: find out if pokefam starts with 500 enemies defeated out of 1000 total. or 0 defeated out of 500 total
-		//current code assumes it starts with 0 defeated out of 500 total. this is a guess.
-		if(auto_warSide() == "hippy")
-		{
-			enemiesRemaining = 500 - get_property("fratboysDefeated").to_int();
-		}
-		else
-		{
-			enemiesRemaining = 500 - get_property("hippiesDefeated").to_int();
-		}
+		enemiesRemaining = 1000 - get_property("fratboysDefeated").to_int();
 	}
 	else
 	{
-		if(auto_warSide() == "hippy")
-		{
-			enemiesRemaining = 1000 - get_property("fratboysDefeated").to_int();
-		}
-		else
-		{
-			enemiesRemaining = 1000 - get_property("hippiesDefeated").to_int();
-		}
+		enemiesRemaining = 1000 - get_property("hippiesDefeated").to_int();
 	}
 	return enemiesRemaining;
 }
@@ -157,10 +161,11 @@ int auto_estimatedAdventuresForChaosButterfly()
 	// during each execution of the script.
 
 	static float expectedItemDropMulti;
-	static {
+	static
+	{
 		auto_log_info("Estimating adventures needed to obtain chaos butterfly.", "green");
 		handleFamiliar("item");
-		simMaximizeWith("20 item");
+		simMaximizeWith($location[The Castle in the Clouds in the Sky (Ground Floor)], "20 item");
 		expectedItemDropMulti = 1 + simValue("Item Drop")/100;
 	}
 
@@ -183,7 +188,7 @@ int auto_estimatedAdventuresForDooks()
 	advCost -= $location[McMillicancuddy's Other Back 40].turns_spent;
 	
 	//these paths cannot use butterfly
-	if(in_bhy() || in_pokefam())
+	if(in_bhy() || in_pokefam() || in_glover())
 	{
 		return advCost;
 	}
@@ -274,7 +279,7 @@ WarPlan auto_bestWarPlan()
 		considerArena = false;
 		considerJunkyard = false;
 	}
-	if(auto_my_path() == "Way of the Surprising Fist")
+	if(in_wotsf())
 	{
 		considerNuns = false;
 	}
@@ -283,11 +288,19 @@ WarPlan auto_bestWarPlan()
 		considerNuns = false;
 		considerOrchard = false;
 	}
-	if (in_glover())
+	if(in_glover())
 	{
 		considerArena = false;
 	}
 	if(auto_warSide() == "hippy")		//arena not implemented for hippies yet. TODO implement it then remove this
+	{
+		considerArena = false;
+	}
+	if(get_property("auto_skipNuns").to_boolean())
+	{
+		considerNuns = false;
+	}
+	if(get_property("auto_ignoreFlyer").to_boolean())
 	{
 		considerArena = false;
 	}
@@ -505,7 +518,8 @@ boolean haveWarOutfit(boolean canWear)
 	return true;
 }
 
-boolean haveWarOutfit() {
+boolean haveWarOutfit()
+{
 	return haveWarOutfit(false);
 }
 
@@ -518,6 +532,11 @@ boolean warAdventure()
 
 	if(!get_property("auto_hippyInstead").to_boolean())
 	{
+		//Commented out until Green smoke bomb support is added
+		if(auto_warEnemiesRemaining() <= 600 && auto_haveGreyGoose()){
+			auto_log_info("Bringing the Grey Goose to emit some drones at a GrOPs hopefully.");
+			handleFamiliar($familiar[Grey Goose]);
+		}
 		if(!autoAdv(1, $location[The Battlefield (Frat Uniform)]))
 		{
 			set_property("hippiesDefeated", get_property("hippiesDefeated").to_int() + 1);
@@ -537,19 +556,19 @@ boolean warAdventure()
 
 boolean L12_getOutfit()
 {
-	if (internalQuestStatus("questL12War") != 0)
+	if(internalQuestStatus("questL12War") != 0)
 	{
 		return false;
 	}
 
 	// if you already have the war outfit we don't need to do anything now
-	if (haveWarOutfit())
+	if(haveWarOutfit())
 	{
 		return false;
 	}
 	
 	//heavy rains softcore pull handling
-	if(!in_hardcore() && (auto_my_path() == "Heavy Rains"))
+	if(!in_hardcore() && in_heavyrains())
 	{
 		// auto_warhippyspy indicates rainman was already used to copy a war hippy spy in heavy rains. if it failed to YR pull missing items
 		if(get_property("auto_warhippyspy") == "done" && get_property("auto_hippyInstead").to_boolean())
@@ -567,8 +586,8 @@ boolean L12_getOutfit()
 		}
 	}
 
-	//softcore pull handling for all other paths
-	if(!in_hardcore() && (auto_my_path() != "Heavy Rains"))
+	//softcore pull handling for all other paths. Can't pull gear in LoL
+	if(!in_hardcore() && !in_heavyrains() && !in_lol())
 	{
 		if(get_property("auto_hippyInstead").to_boolean())
 		{
@@ -591,23 +610,25 @@ boolean L12_getOutfit()
 	}
 	// if you reached this point you are either in hardcore or are in softcore but ran out of pulls
 	// if really in softcore and out of pulls then returning false here lets you skip it until tomorrow
-	if(!in_hardcore())
+	if(!in_hardcore() && !in_lol())
 	{
 		return false;
 	}
 	
 	// if outfit could not be pulled and have a [Filthy Hippy Disguise] outfit then wear it and adventure in Frat House to get war outfit
-	if (!get_property("auto_hippyInstead").to_boolean() && possessOutfit("Filthy Hippy Disguise"))
+	if(auto_warSide() == "fratboy" && possessOutfit("Filthy Hippy Disguise"))
 	{
 		autoOutfit("Filthy Hippy Disguise");
-		return autoAdv(1, $location[Wartime Frat House]);
+		//this should go to [Wartime Frat House (Hippy Disguise)] (despite war not started)
+		return autoAdv($location[The Orcish Frat House]);
 	}
 	
 	// if outfit could not be pulled and have a [Frat Boy Ensemble] outfit then wear it and adventure in Hippy Camp to get war outfit
-	if (get_property("auto_hippyInstead").to_boolean() && possessOutfit("Frat Boy Ensemble"))
+	if(auto_warSide() == "hippy" && possessOutfit("Frat Boy Ensemble"))
 	{
 		autoOutfit("Frat Boy Ensemble");
-		return autoAdv(1, $location[Wartime Hippy Camp]);
+		//this should go to [Wartime Hippy Camp (Frat Disguise)] (despite war not started)
+		return autoAdv($location[The Hippy Camp]);
 	}
 	
 	if(L12_preOutfit())
@@ -625,7 +646,7 @@ boolean L12_preOutfit()
 	}
 	
 	// in softcore you will pull the war outfit, no need to get pre outfit
-	if(!in_hardcore())
+	if(!in_hardcore() && !in_lol())
 	{
 		return false;
 	}
@@ -641,18 +662,18 @@ boolean L12_preOutfit()
 	}
 	
 	// if siding with frat and already own [Filthy Hippy Disguise] outfit needed to get the frat boy war outfit
-	if (!get_property("auto_hippyInstead").to_boolean() && possessOutfit("Filthy Hippy Disguise"))
+	if(!get_property("auto_hippyInstead").to_boolean() && possessOutfit("Filthy Hippy Disguise"))
 	{
 		return false;
 	}
 	
 	// if siding with hippies and already own [Frat Boy Ensemble] outfit needed to get the hippy war outfit
-	if (get_property("auto_hippyInstead").to_boolean() && possessOutfit("Frat Boy Ensemble"))
+	if(get_property("auto_hippyInstead").to_boolean() && possessOutfit("Frat Boy Ensemble"))
 	{
 		return false;
 	}
 	
-	if (isActuallyEd())
+	if(isActuallyEd())
 	{
 		if(!canYellowRay() && (my_level() < 12))
 		{
@@ -660,21 +681,21 @@ boolean L12_preOutfit()
 		}
 	}
 
-	if(have_skill($skill[Calculate the Universe]) && my_daycount() == 1 && get_property("_universeCalculated").to_int() < get_property("skillLevel144").to_int())
+	if(have_skill($skill[Calculate the Universe]) && my_daycount() == 1 && get_property("_universeCalculated").to_int() < min(3, get_property("skillLevel144").to_int()))
 	{
 		return false;
 	}
 
-	//use 1 wish if we can guarentee outfit drops via yellow ray
-	if(canGenieCombat() && auto_shouldUseWishes() && canYellowRay())
+	//use a summon if we can guarentee outfit drops via yellow ray
+	if(canSummonMonster($monster[Orcish Frat Boy Spy]) && canYellowRay())
 	{
-		monster wishTarget = $monster[War Hippy Spy];
+		monster summonTarget = $monster[War Hippy Spy];
 		if(!get_property("auto_hippyInstead").to_boolean())
 		{
-			wishTarget = $monster[Orcish Frat Boy Spy];
+			summonTarget = $monster[Orcish Frat Boy Spy];
 		}
-		auto_log_info(`Trying to wish for a {wishTarget}, which we will yellow ray for war outfit.`);
-		return makeGenieCombat(wishTarget);		
+		auto_log_info(`Trying to summon a {summonTarget}, which we will yellow ray for war outfit.`);
+		return summonMonster(summonTarget);
 	}
 
 	if(in_gnoob() && auto_have_familiar($familiar[Robortender]))
@@ -692,7 +713,7 @@ boolean L12_preOutfit()
 		auto_log_info("Trying to acquire a filthy hippy outfit", "blue");
 		if(internalQuestStatus("questL12War") == -1)
 		{
-			adventure_status = autoAdv(1, $location[Hippy Camp]);
+			adventure_status = autoAdv(1, $location[The Hippy Camp]);
 		}
 		else
 		{
@@ -705,7 +726,7 @@ boolean L12_preOutfit()
 		auto_log_info("Trying to acquire a frat boy ensemble", "blue");
 		if(internalQuestStatus("questL12War") == -1)
 		{
-			adventure_status = autoAdv(1, $location[Frat House]);
+			adventure_status = autoAdv(1, $location[The Orcish Frat House]);
 		}
 		else
 		{
@@ -726,17 +747,17 @@ boolean L12_preOutfit()
 
 boolean L12_startWar()
 {
-	if (internalQuestStatus("questL12War") != 0)
+	if(internalQuestStatus("questL12War") != 0)
 	{
 		return false;
 	}
 
-	if (in_koe())
+	if(in_koe())
 	{
 		return false;
 	}
 
-	if (!haveWarOutfit(true))
+	if(!haveWarOutfit(true))
 	{
 		return false;
 	}
@@ -751,18 +772,27 @@ boolean L12_startWar()
 		handleBjornify($familiar[Grimstone Golem]);
 	}
 	
-	if((my_path() != "Dark Gyffte") && (my_mp() > 50) && have_skill($skill[Incredible Self-Esteem]) && !get_property("_incredibleSelfEsteemCast").to_boolean())
+	if(!in_darkGyffte() && (my_mp() > 50) && have_skill($skill[Incredible Self-Esteem]) && !get_property("_incredibleSelfEsteemCast").to_boolean())
 	{
 		use_skill(1, $skill[Incredible Self-Esteem]);
 	}
 
 	// wear the appropriate war outfit based on auto_hippyInstead
 	equipWarOutfit();
-
+	
+	if (auto_haveCCSC() && !have_skill($skill[Comprehensive Cartography]))
+	{
+		autoForceEquip($item[candy cane sword cane]);
+	}
+	
 	// start the war when siding with frat boys
 	if(!get_property("auto_hippyInstead").to_boolean())
 	{
 		auto_log_info("Must save the ferret!!", "blue");
+		if (L12_singleNCForWarStart())
+		{
+			boolean NCForced = auto_forceNextNoncombat($location[Wartime Hippy Camp]);
+		}
 		autoAdv(1, $location[Wartime Hippy Camp]);
 		
 		//if war started, accept flyer quest for fratboys.
@@ -770,13 +800,17 @@ boolean L12_startWar()
 		//move this to dedicated function that can start it for both sides as appropriate
 		if(internalQuestStatus("questL12War") == 1)
 		{
-			visit_url("bigisland.php?place=concert&pwd");	
+			visit_url("bigisland.php?place=concert&pwd");
 		}
 	}
 	// start the war when siding with hippies
 	else
 	{
 		auto_log_info("Must save the goldfish!!", "blue");
+		if (L12_singleNCForWarStart())
+		{
+			boolean NCForced = auto_forceNextNoncombat($location[Wartime Frat House]);
+		}
 		autoAdv(1, $location[Wartime Frat House]);
 	}
 		
@@ -785,11 +819,11 @@ boolean L12_startWar()
 
 boolean L12_filthworms()
 {
-	if (internalQuestStatus("questL12War") != 1 || get_property("sidequestOrchardCompleted") != "none")
+	if(internalQuestStatus("questL12War") != 1 || get_property("sidequestOrchardCompleted") != "none")
 	{
 		return false;
 	}
-	if (in_tcrs() || in_koe())
+	if(in_tcrs() || in_koe())
 	{
 		return false;
 	}
@@ -797,48 +831,46 @@ boolean L12_filthworms()
 	{
 		return false;
 	}
-
-	auto_log_info("Doing the orchard.", "blue");
+	if(auto_warEnemiesRemaining() == 0)
+	{
+		return false;
+	}
 	
 	//can fight filthworms early as fratboys so long as you do not wear a frat outfit. 
 	//maximizer can accidentally end up wearing the outfit and cause infinite loop.
 	//might want to fight filthworms early to flyer. determining exactly when is overly complex so we are just assuming always.
 	//the frat outfits are pretty weak and as such its no big loss if we don't wear it when doing it early.
-	if(auto_warSide() == "fratboy" && get_property("hippiesDefeated").to_int() < 64)
+	void preventFratOutfitsIfNeeded()
 	{
-		//helmet is least useful with +40 max MP enchantment.
-		if(possessOutfit("frat warrior fatigues"))
+		if(auto_warSide() == "fratboy" && get_property("hippiesDefeated").to_int() < 64)
 		{
-			addToMaximize("-equip beer helmet");
+			//helmet is least useful with +40 max MP enchantment.
+			if(possessOutfit("frat warrior fatigues"))
+			{
+				addToMaximize("-equip beer helmet");
+			}
+			//pants and hat are identical, randomly selected hat for exclusion
+			if(possessOutfit("frat boy ensemble"))
+			{
+				addToMaximize("-equip orcish baseball cap");
+			}
 		}
-		//pants and hat are identical, randomly selected hat for exclusion
-		if(possessOutfit("frat boy ensemble"))
-		{
-			addToMaximize("-equip orcish baseball cap");
-		}
 	}
-	
-	//use the stench glands to unlock the next step of the quest.
-	if(item_amount($item[Filthworm Hatchling Scent Gland]) > 0)
-	{
-		use(1, $item[Filthworm Hatchling Scent Gland]);
-	}
-	if(item_amount($item[Filthworm Drone Scent Gland]) > 0)
-	{
-		use(1, $item[Filthworm Drone Scent Gland]);
-	}
+
+	//if we can kill the queen we don't care about gland drops anymore. kill her and finish this
 	if(item_amount($item[Filthworm Royal Guard Scent Gland]) > 0)
 	{
 		use(1, $item[Filthworm Royal Guard Scent Gland]);
 	}
-
-	//if we can kill the queen we don't care about gland drops anymore. kill her and finish this
 	if(have_effect($effect[Filthworm Guard Stench]) > 0)
 	{
+		auto_log_info("Finishing the orchard.", "blue");
+		preventFratOutfitsIfNeeded();
 		return autoAdv(1, $location[The Filthworm Queen\'s Chamber]);
 	}
 
 	//if we can guarentee stealing the stench gland then no point in buffing item drop
+	boolean glandGuaranteed = true;
 	if(auto_have_skill($skill[Lash of the Cobra]) && get_property("_edLashCount").to_int() < 30)
 	{
 		auto_log_info("Ed will steal stench glands using [Lash of the Cobra]");
@@ -854,50 +886,79 @@ boolean L12_filthworms()
 		auto_log_info("Will steal stench glands using [XO Skeleton]");
 		handleFamiliar($familiar[XO Skeleton]);
 	}
+	else if(auto_dousesRemaining()>0)
+	{
+		auto_log_info("Will steal stench glands using FLUDA douse");
+	}
+	else if(auto_swoopsRemaining()>0)
+	{
+		auto_log_info("Will steal stench glands using Swoop like a Bat");
+	}
 	else if(auto_fireExtinguisherCharges() > 10)
 	{
 		auto_log_info("Will steal stench glands using polar vortex ability of [Industrial Fire Extinguisher]");
 	}
 	//TODO add IOTM cat burglar stealing support here with another else if
 	// or if we're about to yellow ray
-	else if(canYellowRay())
+	else if(canYellowRay($monster[filthworm drone]))
 	{
 		auto_log_info("We're going to yellow ray the stench glands.");
 	}
-	else		//could not guarentee stealing. buff item drops instead
+	else if(item_drop_modifier() < 900.0)	//could not guarentee stealing. check if it should be delayed otherwise buff item drops instead
 	{
-		buffMaintain($effect[Joyful Resolve], 0, 1, 1);
-		buffMaintain($effect[Kindly Resolve], 0, 1, 1);
-		buffMaintain($effect[Fortunate Resolve], 0, 1, 1);
-		buffMaintain($effect[One Very Clear Eye], 0, 1, 1);
-		buffMaintain($effect[Human-Fish Hybrid], 0, 1, 1);
-		buffMaintain($effect[Human-Human Hybrid], 0, 1, 1);
-		buffMaintain($effect[Human-Machine Hybrid], 0, 1, 1);
-		buffMaintain($effect[Unusual Perspective], 0, 1, 1);
-		buffMaintain($effect[Eagle Eyes], 0, 1, 1);
-		buffMaintain($effect[Heart of Lavender], 0, 1, 1);
-		asdonBuff($effect[Driving Observantly]);
-		bat_formBats();
-
-		if(get_property("auto_dickstab").to_boolean())
+		if(have_effect($effect[Everything Looks Yellow]) > 0 && have_effect($effect[Everything Looks Yellow]) <= 100)
 		{
-			buffMaintain($effect[Wet and Greedy], 0, 1, 1);
-		}
-		buffMaintain($effect[Frosty], 0, 1, 1);
-		
-		//craft IOTM derivative that gives high item bonus
-		if((!possessEquipment($item[A Light That Never Goes Out])) && (item_amount($item[Lump of Brituminous Coal]) > 0))
-		{
-			buyUpTo(1, $item[third-hand lantern]);
-			autoCraft("smith", 1, $item[Lump of Brituminous Coal], $item[third-hand lantern]);
+			//yellow ray is on cooldown for now, we may be able to delay filthworms task until next yellow ray
+			boolean delayFilthworms;
+			
+			if(get_property("questL11MacGuffin") != "finished")
+			{
+				//level 11 quest not finished, filthworms can wait
+				if(isAboutToPowerlevel())
+				{
+					auto_log_info("Proceeding with filthworms because something seems to be holding up the level 11 quest.");
+				}
+				else
+				{
+					delayFilthworms = true;
+				}
+			}
+			else if(auto_warSide() == "fratboy" && get_property("hippiesDefeated").to_int() < 64)
+			{
+				//frat side has not defeated enough hippies to reach filthworms quest
+				if(get_property("flyeredML").to_int() >= 10000 || !isAboutToPowerlevel())
+				{
+					//if not stalled at flyering wait for battlefield, else can wait for optimal conditions because L12_lastDitchFlyer also waits on isAboutToPowerlevel()
+					delayFilthworms = true;
+				}
+			}
+			else if(auto_warSide() == "hippy")
+			{
+				WarPlan quest_planned = auto_bestWarPlan();
+				if(quest_planned.do_nuns && get_property("sidequestNunsCompleted") == "none")
+				{
+					//can wait until nuns finished
+					delayFilthworms = true;
+				}
+				if(quest_planned.do_farm && get_property("sidequestFarmCompleted") == "none" && !get_property("auto_skipL12Farm").to_boolean())
+				{
+					//can wait until farm finished
+					delayFilthworms = true;
+				}
+			}
+			
+			if(delayFilthworms)
+			{
+				auto_log_info("Delaying filthworms because Everything Looks Yellow");
+				return false;
+			}
 		}
 
-		if (!canChangeToFamiliar($familiar[XO Skeleton]) && catBurglarHeistsLeft() < 1) {
-			//fold and remove maximizer block on using IOTM with 9 charges a day that doubles item drop chance
-			januaryToteAcquire($item[Broken Champagne Bottle]);
-		}
+		// filth worm glands have 10% drop rate
+		// getting here means we don't have a yellow ray, not delaying for the yr, and don't have enough +item yet
+		provideItem(900,$location[The Feeding Chamber], false);
 
-		if(auto_my_path() == "Live. Ascend. Repeat.")
+		if(in_lar())
 		{
 			equipMaximizedGear();
 			if(item_drop_modifier() < 400.0)
@@ -905,16 +966,67 @@ boolean L12_filthworms()
 				abort("Can not handle item drop amount for the Filthworms, deja vu!! Either get us to +400% and rerun or do it yourself.");
 			}
 		}
+		if(item_drop_modifier() < 800.0)
+		{
+			glandGuaranteed = false;
+			if(possessEquipment($item[Retrospecs]))
+			{
+				//preadv would give a 50%item accessory a value of 2500 but when multiple fights are expected in each zone this accessory should be equivalent to 100%item?
+				addToMaximize("+2500bonus Retrospecs");
+			}
+		}
 	}
+	
+	auto_log_info("Doing the orchard.", "blue");
 
-	if (auto_cargoShortsOpenPocket(343)) // skip straight to the Royal Guard Chamber
+	//use the stench glands to unlock the next step of the quest.
+	if(item_amount($item[Filthworm Hatchling Scent Gland]) > 0)
 	{
-		handleTracker($item[Cargo Cultist Shorts], $effect[Filthworm Drone Stench], "auto_otherstuff");
+		use(1, $item[Filthworm Hatchling Scent Gland]);
 	}
+	if(item_amount($item[Filthworm Drone Scent Gland]) > 0)
+	{
+		use(1, $item[Filthworm Drone Scent Gland]);
+	}
+	
+	if(auto_cargoShortsOpenPocket(343)) // skip straight to the Royal Guard Chamber
+	{
+		handleTracker(wrap_item($item[Cargo Cultist Shorts]), $effect[Filthworm Drone Stench], "auto_otherstuff");
+	}
+	
+	preventFratOutfitsIfNeeded();
 	
 	boolean retval = false;
 	if(have_effect($effect[Filthworm Drone Stench]) > 0)
 	{
+		//last gland
+		if(have_effect($effect[Filthworm Drone Stench]) == 1 && !glandGuaranteed)
+		{
+			//running out of effect, failing on the last turn would mean having to start over from The Hatching Chamber
+			if(!get_property("auto_limitConsume").to_boolean())
+			{
+				if(canChew($item[spooky jelly]) && spleen_left() >= $item[spooky jelly].spleen && acquireOrPull($item[spooky jelly]) && autoChew(1, $item[spooky jelly]))
+				{
+					auto_log_info("Only one turn left in The Royal Guard Chamber, using spooky jelly emanations to avoid having to start over from the beginning");
+					glandGuaranteed = true;
+				}
+				else if(canEat($item[toast with spooky jelly]) && stomach_left() >= $item[toast with spooky jelly].fullness && acquireOrPull($item[toast with spooky jelly]) && autoEat(1, $item[toast with spooky jelly]))
+				{
+					//with values like 10 to 20 turns saved, not checking get_property("auto_consumeMinAdvPerFill").to_float()
+					auto_log_info("Only one turn left in The Royal Guard Chamber, using spooky jelly toast emanations to avoid having to start over from the beginning");
+					glandGuaranteed = true;
+				}
+			}
+			if(glandGuaranteed)
+			{
+				//gland that was not guaranteed is forced now
+				if(possessEquipment($item[Broken Champagne Bottle]) && januaryToteTurnsLeft($item[Broken Champagne Bottle]) > 0)
+				{
+					addToMaximize("-equip Broken Champagne Bottle");	//using this charge is no longer necessary, restore maximizer block that was removed
+				}
+			}
+			//todo if still not glandGuaranteed try to force the use of free kills in combat?
+		}
 		retval = autoAdv(1, $location[The Royal Guard Chamber]);
 	}
 	else if(have_effect($effect[Filthworm Larva Stench]) > 0)
@@ -931,11 +1043,11 @@ boolean L12_filthworms()
 
 boolean L12_orchardFinalize()
 {
-	if (get_property("hippiesDefeated").to_int() < 64 && !get_property("auto_hippyInstead").to_boolean())
+	if(get_property("hippiesDefeated").to_int() < 64 && !get_property("auto_hippyInstead").to_boolean())
 	{
 		return false;
 	}
-	if (get_property("sidequestOrchardCompleted") != "none" || item_amount($item[Heart of the Filthworm Queen]) == 0)
+	if(get_property("sidequestOrchardCompleted") != "none" || item_amount($item[Heart of the Filthworm Queen]) == 0)
 	{
 		return false;
 	}
@@ -944,16 +1056,26 @@ boolean L12_orchardFinalize()
 		pulverizeThing($item[A Light that Never Goes Out]);
 	}
 	equipWarOutfit();
-	visit_url("bigisland.php?place=orchard&action=stand&pwd=");
-	visit_url("shop.php?whichshop=hippy");
+	if(is_werewolf())
+	{
+		visit_url("bigisland.php?place=orchard&action=stand&pwd=");
+		return true; // can't access the shop as a werewolf so just want to return after done
+	}
+	else
+	{
+		visit_url("bigisland.php?place=orchard&action=stand&pwd=");
+		visit_url("shop.php?whichshop=hippy");
+	}
 	return true;
 }
 
 void gremlinsFamiliar()
 {
 	//when fighting gremlins we want to minimize the familiar ability to cause damage.
-	//maximizer will try to force an equip into familiar slot. So disable maximizer switching of familiar equipment
-	addToMaximize("-familiar");
+
+	if (in_avantGuard()) {
+		return;
+	}
 	
 	familiar hundred_fam = to_familiar(get_property("auto_100familiar"));
 	boolean strip_familiar = true;
@@ -967,33 +1089,86 @@ void gremlinsFamiliar()
 			set_property("_auto_seaQuestStartedToday", true);
 			visit_url("place.php?whichplace=sea_oldman&action=oldman_oldman");	//get bathysphere by starting the sea quest
 		}
+		if(possessEquipment($item[mini kiwi invisible dirigible]) && !in_iluh())
+		{
+			equip($slot[familiar], $item[mini kiwi invisible dirigible]);
+			strip_familiar = false;
+			//disable maximizer switching of familiar equipment
+			addToMaximize("-familiar");
+		}
+		if(possessEquipment($item[Tiny consolation ribbon]))
+		{
+			equip($slot[familiar], $item[Tiny consolation ribbon]);
+			strip_familiar = false;
+			//disable maximizer switching of familiar equipment
+			addToMaximize("-familiar");
+		}
 		if(possessEquipment($item[little bitty bathysphere]))
 		{
 			equip($slot[familiar], $item[little bitty bathysphere]);
 			strip_familiar = false;
+			//disable maximizer switching of familiar equipment
+			addToMaximize("-familiar");
+		}
+	}
+	else if(lookupFamiliarDatafile("gremlins") == $familiar[none])	//none of the desired familiars available
+	{
+		//don't know what familiar will be chosen or what its own equipment does
+		strip_familiar = true;
+		//maximizer will try to force an equip into familiar slot. So disable maximizer switching of familiar equipment
+		addToMaximize("-familiar");
+	}
+	else
+	{
+		//desired familiars will be available. their own equipment or generic weight boosting familiar equipment is beneficial
+		strip_familiar = false;
+
+		//there is a limited list of harmful familiar equipment to forbid
+		foreach fameq in $items[tiny bowler,ant hoe,ant pick,ant pitchfork,ant rake,ant sickle,oversized fish scaler,filthy child leash,plastic pumpkin bucket,little box of fireworks,moveable feast]
+		{
+			item wrapped_fameq = wrap_item(fameq);
+			if(possessEquipment(wrapped_fameq))
+			{
+				addToMaximize("-equip " + wrapped_fameq.to_string());
+			}
 		}
 	}
 	if(strip_familiar)
 	{
-		equip($slot[familiar], $item[none]);	//strip familiar equipment if not in 100% run to avoid passive dmg
+		equip($slot[familiar], $item[none]);	//strip familiar equipment to avoid passive dmg
 	}
 }
 
 boolean L12_gremlins()
 {
-	if (internalQuestStatus("questL12War") != 1 || get_property("sidequestJunkyardCompleted") != "none")
+	if(internalQuestStatus("questL12War") != 1 || get_property("sidequestJunkyardCompleted") != "none")
 	{
 		return false;
 	}
-	if (in_koe() || in_pokefam() || in_bhy())
+	if(in_koe() || in_pokefam() || in_bhy())
 	{
 		return false;
+	}
+	if(is_professor())
+	{
+		return false; //Only 1 HP as a professor so can't stasis long enough
 	}
 	if(get_property("auto_hippyInstead").to_boolean() && (get_property("fratboysDefeated").to_int() < 192))
 	{
 		return false;
 	}
-	if(in_glover())
+	if(auto_warEnemiesRemaining() == 0)
+	{
+		return false;
+	}
+	if (in_zombieSlayer())
+	{
+		if(!auto_have_skill($skill[Plague Claws]) && item_amount($item[Seal Tooth]) == 0)
+		{
+			return false;
+		}
+	}
+	else if(in_glover())
 	{
 		int need = 30 - item_amount($item[Doc Galaktik\'s Pungent Unguent]);
 		if((need > 0) && (item_amount($item[Molybdenum Pliers]) == 0))
@@ -1003,23 +1178,46 @@ boolean L12_gremlins()
 			{
 				return false;
 			}
-			buyUpTo(30, $item[Doc Galaktik\'s Pungent Unguent]);
+			auto_buyUpTo(30, $item[Doc Galaktik\'s Pungent Unguent]);
 		}
-	} else {
-		if (item_amount($item[Seal Tooth]) == 0) {
+	}
+	else
+	{
+		if(item_amount($item[Seal Tooth]) == 0)
+		{
 			acquireHermitItem($item[Seal Tooth]);
-			if (item_amount($item[Seal Tooth]) == 0) {
+			if(item_amount($item[Seal Tooth]) == 0)
+			{
 				abort("We don't have a seal tooth. Stasising Gremlins is not going to go well if you lack something to stasis them with.");
 			}
 		}
 	}
 
-	if(0 < have_effect($effect[Curse of the Black Pearl Onion])) {
+	if(0 < have_effect($effect[Curse of the Black Pearl Onion]))
+	{
 		uneffect($effect[Curse of the Black Pearl Onion]);
+	}
+	
+	if(0 < have_effect($effect[Everything Is Bananas]) && !uneffect($effect[Everything Is Bananas]))
+	{
+		//normally effect would not be used close enough to this quest for this to happen
+		if(!isAboutToPowerlevel())
+		{
+			auto_log_info("Delaying gremlins because Everything Is Bananas");
+			return false;
+		}
+		else
+		{
+			abort("Stuck with Everything Is Bananas effect at junkyard sidequest. Probably can't complete quest if gremlins unable to hit.");
+		}
 	}
 
 	if(item_amount($item[molybdenum magnet]) == 0)
 	{
+		if(robot_delay("outfit"))
+		{
+			return false;	//delay for You, Robot path
+		}
 		//if fighting for frat immediately grab it
 		if(!get_property("auto_hippyInstead").to_boolean())
 		{
@@ -1042,7 +1240,7 @@ boolean L12_gremlins()
 		else return true;
 	}
 
-	if(auto_my_path() == "Disguises Delimit")
+	if(in_disguises())
 	{
 		abort("Do gremlins manually, sorry. Or set sidequestJunkyardCompleted=fratboy and we will just skip them");
 	}
@@ -1051,7 +1249,9 @@ boolean L12_gremlins()
 	gremlinsFamiliar();
 
 	auto_log_info("Doing them gremlins", "blue");
-	addToMaximize("20dr,1da 1000max,3hp,-3ml");
+	// ideally we want to survive a single attack
+	addToMaximize("20dr,1da 1000max,-ml,-1000avoid attack");
+	autoForceEquip($item[peridot of peril]);
 	acquireHP();
 	if(!bat_wantHowl($location[over where the old tires are]))
 	{
@@ -1088,20 +1288,24 @@ boolean L12_gremlins()
 
 boolean L12_sonofaBeach()
 {
-	if (internalQuestStatus("questL12War") != 1 || get_property("sidequestLighthouseCompleted") != "none")
+	if(internalQuestStatus("questL12War") != 1 || get_property("sidequestLighthouseCompleted") != "none")
 	{
 		return false;
 	}
-	if (in_koe())
+	if(in_koe())
 	{
 		return false;
 	}
-	if(!get_property("auto_hippyInstead").to_boolean())
+	if(!in_pokefam() && !get_property("auto_hippyInstead").to_boolean())
 	{
-		if (get_property("sidequestJunkyardCompleted") == "none")
+		if(get_property("sidequestJunkyardCompleted") == "none")
 		{
 			return false;
 		}
+	}
+	if(auto_warEnemiesRemaining() == 0)
+	{
+		return false;
 	}
 	if((get_property("fratboysDefeated").to_int() < 64) && get_property("auto_hippyInstead").to_boolean())
 	{
@@ -1112,11 +1316,18 @@ boolean L12_sonofaBeach()
 		return false;
 	}
 
+	if(auto_hasAutumnaton() && !isAboutToPowerlevel() && $location[Sonofa Beach].turns_spent > 0)
+	{
+		// delay zone to allow autumnaton to grab barrels
+		// unless we have ran out of other stuff to do
+		return false;
+	}
+
 	if(in_pokefam())
 	{
 		if(contains_text($location[Sonofa Beach].combat_queue, to_string($monster[Lobsterfrogman])))
 		{
-			if(timeSpinnerCombat($monster[Lobsterfrogman], ""))
+			if(timeSpinnerCombat($monster[Lobsterfrogman]))
 			{
 				return true;
 			}
@@ -1132,7 +1343,7 @@ boolean L12_sonofaBeach()
 		}
 	}
 
-	if (isActuallyEd() && item_amount($item[Talisman of Horus]) == 0 && have_effect($effect[Taunt of Horus]) == 0)
+	if(isActuallyEd() && item_amount($item[Talisman of Horus]) == 0 && have_effect($effect[Taunt of Horus]) == 0)
 	{
 		return false;
 	}
@@ -1151,12 +1362,13 @@ boolean L12_sonofaBeach()
 		pulverizeThing($item[Goatskin Umbrella]);
 	}
 
-	if(auto_my_path() != "Live. Ascend. Repeat.")
+	if(!in_lar())
 	{
-		if (providePlusCombat(25, true, true) < 0.0)
+		float combat_bonus = providePlusCombat(auto_combatModCap(), $location[Sonofa Beach], true, true);
+		if(combat_bonus <= 0.0)
 		{
-			auto_log_warning("Something is keeping us from getting a suitable combat rate, we have: " + numeric_modifier("Combat Rate") + " and Lobsterfrogmen.", "red");
-			equipBaseline();
+			auto_log_warning("Something is keeping us from getting a suitable combat rate for [Lobsterfrogmen] in [Sonofa Beach]. we have: " +combat_bonus, "red");
+			resetState();
 			return false;
 		}
 	}
@@ -1179,7 +1391,7 @@ boolean L12_sonofaPrefix()
 	// this appears to be a copy & paste of L12_sonofaBeach() with some small changes
 	// for Vote Monster/Macrometeor shenanigans. Refactor this so only the relevant code remains.
 
-	if (internalQuestStatus("questL12War") != 1 || get_property("sidequestLighthouseCompleted") != "none")
+	if(internalQuestStatus("questL12War") != 1 || get_property("sidequestLighthouseCompleted") != "none")
 	{
 		return false;
 	}
@@ -1215,6 +1427,12 @@ boolean L12_sonofaPrefix()
 		}
 	}
 
+	if(auto_backupTarget() && get_property("lastCopyableMonster").to_monster() == $monster[lobsterfrogman])
+	{
+		//let LX_burnDelay() run prior to forcing backing up in noob cave
+		return false;
+	}
+
 	if(!(auto_get_campground() contains $item[Source Terminal]))
 	{
 		if((auto_voteMonster() || auto_sausageGoblin()) && adjustForReplaceIfPossible())
@@ -1225,12 +1443,12 @@ boolean L12_sonofaPrefix()
 				{
 					set_property("auto_doCombatCopy", "yes");
 				}
-				if (auto_voteMonster() && !auto_voteMonster(true))
+				if(auto_voteMonster() && !auto_voteMonster(true))
 				{
-					auto_voteMonster(false, $location[Sonofa Beach], "");
+					auto_voteMonster(false, $location[Sonofa Beach]);
 					return true;
 				}
-				else if (auto_sausageGoblin() && !auto_haveVotingBooth())
+				else if(auto_sausageGoblin() && !auto_haveVotingBooth())
 				{
 					auto_sausageGoblin($location[Sonofa Beach], "");
 					return true;
@@ -1245,7 +1463,7 @@ boolean L12_sonofaPrefix()
 		return false;
 	}
 
-	if (isActuallyEd() && item_amount($item[Talisman of Horus]) == 0 && have_effect($effect[Taunt of Horus]) == 0)
+	if(isActuallyEd() && item_amount($item[Talisman of Horus]) == 0 && have_effect($effect[Taunt of Horus]) == 0)
 	{
 		return false;
 	}
@@ -1265,34 +1483,13 @@ boolean L12_sonofaPrefix()
 		pulverizeThing($item[Goatskin Umbrella]);
 	}
 
-	if(auto_my_path() != "Live. Ascend. Repeat.")
+	if(!in_lar())
 	{
-		if(equipped_item($slot[acc1]) == $item[over-the-shoulder folder holder])
+		float combat_bonus = providePlusCombat(auto_combatModCap(), $location[Sonofa Beach], true, true);
+		if(combat_bonus <= 0.0)
 		{
-			if((item_amount($item[Ass-Stompers of Violence]) > 0) && (equipped_item($slot[acc1]) != $item[Ass-Stompers of Violence]) && can_equip($item[Ass-Stompers of Violence]))
-			{
-				equip($slot[acc1], $item[Ass-Stompers of Violence]);
-			}
-			else
-			{
-				equip($slot[acc1], $item[bejeweled pledge pin]);
-			}
-		}
-		if(item_amount($item[portable cassette player]) > 0)
-		{
-			equip($slot[acc2], $item[portable cassette player]);
-		}
-		if(numeric_modifier("Combat Rate") <= 9.0)
-		{
-			if(possessEquipment($item[Carpe]))
-			{
-				equip($slot[Back], $item[Carpe]);
-			}
-		}
-		if(numeric_modifier("Combat Rate") < 0.0)
-		{
-			auto_log_warning("Something is keeping us from getting a suitable combat rate, we have: " + numeric_modifier("Combat Rate") + " and Lobsterfrogmen.", "red");
-			equipBaseline();
+			auto_log_warning("Something is keeping us from getting a suitable combat rate for [Lobsterfrogmen] in [Sonofa Beach]. we have: " +combat_bonus, "red");
+			resetState();
 			return false;
 		}
 	}
@@ -1304,7 +1501,7 @@ boolean L12_sonofaPrefix()
 
 	if((my_mp() < mp_cost($skill[Digitize])) && (auto_get_campground() contains $item[Source Terminal]) && is_unrestricted($item[Source Terminal]) && (get_property("_sourceTerminalDigitizeMonster") != $monster[Lobsterfrogman]) && (get_property("_sourceTerminalDigitizeUses").to_int() < 3))
 	{
-		equipBaseline();
+		resetState();
 		return false;
 	}
 
@@ -1327,21 +1524,22 @@ boolean L12_sonofaPrefix()
 	auto_sourceTerminalEducate($skill[Extract], $skill[Digitize]);
 
 	boolean retval = autoAdv($location[Sonofa Beach]);
-	
-	set_property("auto_combatDirective", "");
-	set_property("auto_doCombatCopy", "no");
+	if(!retval)
+	{
+		auto_log_error("Failed to adventure in [Sonofa Beach]");
+		resetState();
+	}
 	edAcquireHP();
-	
 	return retval;
 }
 
 boolean L12_sonofaFinish()
 {
-	if (internalQuestStatus("questL12War") != 1 || get_property("sidequestLighthouseCompleted") != "none")
+	if(internalQuestStatus("questL12War") != 1 || get_property("sidequestLighthouseCompleted") != "none")
 	{
 		return false;
 	}
-	if (in_koe())
+	if(in_koe())
 	{
 		return false;
 	}
@@ -1366,7 +1564,7 @@ boolean L12_sonofaFinish()
 
 boolean L12_flyerBackup()
 {
-	if (internalQuestStatus("questL12War") != 1)
+	if(internalQuestStatus("questL12War") != 1)
 	{
 		return false;
 	}
@@ -1396,7 +1594,11 @@ boolean L12_lastDitchFlyer()
 	{
 		return false;
 	}
-	if (internalQuestStatus("questL12War") != 1 || get_property("sidequestArenaCompleted") != "none" || get_property("flyeredML").to_int() >= 10000)
+	if(!auto_bestWarPlan().do_arena)
+	{
+		return false;		//we are not planning to do arena this ascension
+	}
+	if(internalQuestStatus("questL12War") != 1 || get_property("sidequestArenaCompleted") != "none" || get_property("flyeredML").to_int() >= 10000)
 	{
 		return false;
 	}
@@ -1404,83 +1606,54 @@ boolean L12_lastDitchFlyer()
 	{
 		return false;
 	}
+	if(my_level() < 13 && !isAboutToPowerlevel())
+	{
+		return false;		//let the powerlevel lock release first so we can do quests that are waiting for optimal conditions.
+	}
 
 	auto_log_info("Not enough flyer ML but we are ready for the war... uh oh", "blue");
+	if(LX_freeCombats(true)) return true;	//try to use free combats to make up the difference.
 
-	if (needStarKey())
+	location scalezone = highestScalingZone();
+	float flyer_gains = my_buffedstat($stat[moxie]) + monster_level_adjustment();
+	switch(scalezone)
 	{
-		if (!zone_isAvailable($location[The Hole in the Sky]))
-		{
-			return (L10_topFloor() || L10_holeInTheSkyUnlock());
-		}
-		else
-		{
-			if(LX_getStarKey())
-			{
-				return true;
-			}
-		}
-	} else if (needDigitalKey()) {
-		if (LX_getDigitalKey()) {
-			return true;
-		}
+		case $location[The Neverending Party]:
+			flyer_gains += 20; break;
+		case $location[VYKEA]:
+			flyer_gains += 6; break;
+		case $location[Uncle Gator\'s Country Fun-Time Liquid Waste Sluice]:
+		case $location[The Deep Dark Jungle]:
+		case $location[Sloppy Seconds Diner]:
+			flyer_gains += 5; break;
 	}
-	else
+	float adv_needed = (10000.0 - get_property("flyeredML").to_float()) / flyer_gains;
+	
+	warPlan plan_do_arena = auto_bestWarPlan();
+	plan_do_arena.do_arena = true;
+	warPlan plan_no_arena = auto_bestWarPlan();
+	plan_no_arena.do_arena = false;
+	float adv_saved = auto_warTotalBattles(plan_no_arena) - auto_warTotalBattles(plan_do_arena);
+	
+	if(adv_needed > adv_saved)
 	{
-		auto_log_warning("Should not have so little flyer ML at this point", "red");
-		wait(1);
-		if(!LX_attemptFlyering())
-		{
-			abort("Need more flyer ML but don't know where to go :(");
-		}
-		return true;
+		return false;	//if we lose advs by doing last ditch flyering then do not do it
 	}
-	return false;
-}
 
-boolean LX_attemptFlyering()
-{
-	if(elementalPlanes_access($element[stench]) && auto_have_skill($skill[Summon Smithsness]))
-	{
-		return autoAdv(1, $location[Uncle Gator\'s Country Fun-Time Liquid Waste Sluice]);
-	}
-	else if(elementalPlanes_access($element[spooky]))
-	{
-		return autoAdv(1, $location[The Deep Dark Jungle]);
-	}
-	else if(elementalPlanes_access($element[cold]))
-	{
-		return autoAdv(1, $location[VYKEA]);
-	}
-	else if(elementalPlanes_access($element[stench]))
-	{
-		return autoAdv(1, $location[Uncle Gator\'s Country Fun-Time Liquid Waste Sluice]);
-	}
-	else if(elementalPlanes_access($element[sleaze]))
-	{
-		return autoAdv(1, $location[Sloppy Seconds Diner]);
-	}
-	else if(neverendingPartyAvailable())
+	if(scalezone == $location[The Neverending Party])
 	{
 		return neverendingPartyCombat();
 	}
-	else
+	if(scalezone != $location[none])
 	{
-		int flyer = get_property("flyeredML").to_int();
-		boolean retval = autoAdv($location[Near an Abandoned Refrigerator]);
-		if (flyer == get_property("flyeredML").to_int())
-		{
-			abort("Trying to flyer but failed to flyer");
-		}
-		set_property("auto_newbieOverride", true);
-		return retval;
+		return autoAdv(scalezone);
 	}
 	return false;
 }
 
 boolean L12_flyerFinish()
 {
-	if (internalQuestStatus("questL12War") != 1)
+	if(internalQuestStatus("questL12War") != 1)
 	{
 		return false;
 	}
@@ -1504,6 +1677,11 @@ boolean L12_flyerFinish()
 	{
 		return false;
 	}
+	if(robot_delay("outfit"))
+	{
+		return false;	//delay for You, Robot path
+	}
+	
 	auto_log_info("Done with this Flyer crap", "blue");
 	equipWarOutfit(false);
 	visit_url("bigisland.php?place=concert&pwd");
@@ -1520,17 +1698,28 @@ boolean L12_flyerFinish()
 
 boolean L12_themtharHills()
 {
-	if (internalQuestStatus("questL12War") != 1 || get_property("sidequestNunsCompleted") != "none")
+	if(internalQuestStatus("questL12War") != 1 || get_property("sidequestNunsCompleted") != "none")
+	{
+		return false;
+	}
+	
+	if(auto_warEnemiesRemaining() == 0)
 	{
 		return false;
 	}
 
-	if (in_tcrs() || in_koe() || auto_my_path() == "Way of the Surprising Fist")
+	if(in_tcrs() || in_koe() || in_wotsf())
 	{
 		return false;
 	}
 
-	if ((get_property("hippiesDefeated").to_int() < 192 && !get_property("auto_hippyInstead").to_boolean()) || get_property("auto_skipNuns").to_boolean())
+	// delay nuns if we have free fights available as it would cap meat drop to 1,000
+	if(get_property("breathitinCharges").to_int() > 0 && !isAboutToPowerlevel())
+	{
+		return false;
+	}
+
+	if((get_property("hippiesDefeated").to_int() < 192 && !get_property("auto_hippyInstead").to_boolean()) || get_property("auto_skipNuns").to_boolean())
 	{
 		return false;
 	}
@@ -1538,116 +1727,97 @@ boolean L12_themtharHills()
 	{
 		auto_log_info("Themthar Nuns!", "blue");
 	}
+	
+	handleFamiliar("meat");
 
-	if((get_property("sidequestArenaCompleted") == "fratboy") && !get_property("concertVisited").to_boolean() && (have_effect($effect[Winklered]) == 0))
+	//can only do this in Avant Guard in 6 turns in HC or 8 turns in Normal. Need the August Scepter. If day 1, can't get enough waffles so don't even bother with this
+	set_property("auto_delayWar", false);
+	if(in_avantGuard())
 	{
-		outfit("Frat Warrior Fatigues");
-		cli_execute("concert 2");
-	}
-
-	handleBjornify($familiar[Hobo Monkey]);
-	if((equipped_item($slot[off-hand]) != $item[Half a Purse]) && !possessEquipment($item[Half a Purse]) && (item_amount($item[Lump of Brituminous Coal]) > 0))
-	{
-		buyUpTo(1, $item[Loose Purse Strings]);
-		autoCraft("smith", 1, $item[Lump of Brituminous Coal], $item[Loose purse strings]);
-	}
-
-	autoEquip($item[Half a Purse]);
-	if(auto_my_path() == "Heavy Rains")
-	{
-		autoEquip($item[Thor\'s Pliers]);
-	}
-	autoEquip($item[Miracle Whip]);
-
-	shrugAT($effect[Polka of Plenty]);
-	if (isActuallyEd())
-	{
-		if(!have_skill($skill[Gift of the Maid]) && ($servant[Maid].experience >= 441))
+		if (!auto_haveAugustScepter()) {
+			// no scepter = no waffles = impossible
+			// macrometeorite / replace enemy use different code and don't work for this
+			set_property("auto_skipNuns", "true");
+			return false;
+		}
+		if (my_daycount() == 1) {
+			// don't have enough waffles yet
+			return false;
+		}
+		auto_log_info("Checking how much meat drop we can get");
+		if((in_hardcore() && item_amount($item[waffle]) <= 6 && $location[The Themthar Hills].turns_spent + item_amount($item[waffle]) > 6) ||
+		(item_amount($item[waffle]) <= 8 && $location[The Themthar Hills].turns_spent + item_amount($item[waffle]) > 8))
 		{
-			visit_url("charsheet.php");
-			if(have_skill($skill[Gift of the Maid]))
+			return false;
+		}
+		int meatProvide = (in_hardcore() ? provideMeat(1800, true, true) : provideMeat(1600, true, true));
+		if((in_hardcore() && !(meatProvide >= 1800)) || !(meatProvide >= 1600))
+		{
+			int bonusMeat = 0;
+			boolean getInhaler = false;
+			boolean doRufus = false;
+			if(have_effect($effect[Sinuses For Miles]) <= 0 && item_amount($item[Mick\'s IcyVapoHotness Inhaler]) < 1 && auto_is_valid($item[Mick\'s IcyVapoHotness Inhaler]) && cloversAvailable() > 0 && zone_isAvailable($location[The Castle in the Clouds in the Sky (Top Floor)]))
 			{
-				auto_log_warning("Gift of the Maid not properly detected until charsheet refresh.", "red");
+				bonusMeat += 200;
+				getInhaler = true;
+			}
+			if(auto_havePayPhone() && !(get_property("_shadowAffinityToday").to_boolean()) && item_amount($item[Rufus\'s shadow lodestone]) < 1 )
+			{
+				bonusMeat += 200;
+				doRufus = true;
+			}
+			int bonusMeatNeeded = (in_hardcore() ? (1800 - meatProvide) : (1600 - meatProvide));
+			if(bonusMeatNeeded - bonusMeat <= 0)
+			{
+				if(getInhaler)
+				{
+					auto_log_info("Getting Inhaler");
+					return autoLuckyAdv($location[The Castle in the Clouds in the Sky (Top Floor)]);
+				}
+				if(doRufus)
+				{
+					auto_log_info("Doing Pay Phone Quest for Shadow Waters");
+					return auto_doPhoneQuest();
+				}
+			}
+			else
+			{
+				set_property("auto_delayWar", true);
+				return false;
 			}
 		}
 	}
-	buffMaintain($effect[Purr of the Feline], 10, 1, 1);
-	songboomSetting("meat");
-	handleFamiliar("meat");
-	addToMaximize("200meat drop");
-
-	if(auto_shouldUseWishes())
-	{
-		makeGenieWish($effect[Frosty]);
-	}
-	buffMaintain($effect[Greedy Resolve], 0, 1, 1);
-	buffMaintain($effect[Disco Leer], 10, 1, 1);
-	buffMaintain($effect[Polka of Plenty], 8, 1, 1);
-	#Handle for familiar weight change.
-	buffMaintain($effect[Kindly Resolve], 0, 1, 1);
-	buffMaintain($effect[Heightened Senses], 0, 1, 1);
-	buffMaintain($effect[Big Meat Big Prizes], 0, 1, 1);
-	buffMaintain($effect[Human-Machine Hybrid], 0, 1, 1);
-	buffMaintain($effect[Human-Constellation Hybrid], 0, 1, 1);
-	buffMaintain($effect[Human-Humanoid Hybrid], 0, 1, 1);
-	buffMaintain($effect[Human-Fish Hybrid], 0, 1, 1);
-	buffMaintain($effect[Cranberry Cordiality], 0, 1, 1);
-	buffMaintain($effect[Patent Avarice], 0, 1, 1);
-	buffMaintain($effect[Car-Charged], 0, 1, 1);
-	buffMaintain($effect[Heart of Pink], 0, 1, 1);
-	buffMaintain($effect[Sweet Heart], 0, 1, 20);
-		
-	if(item_amount($item[body spradium]) > 0 && !in_tcrs() && have_effect($effect[Boxing Day Glow]) == 0)
-	{
-		autoChew(1, $item[body spradium]);
-	}
-	if(have_effect($effect[meat.enh]) == 0)
-	{
-		if(auto_sourceTerminalEnhanceLeft() > 0)
-		{
-			auto_sourceTerminalEnhance("meat");
-		}
-	}
-	if(have_effect($effect[Synthesis: Greed]) == 0)
-	{
-		rethinkingCandy($effect[Synthesis: Greed]);
-	}
-	asdonBuff($effect[Driving Observantly]);
-
-	if(available_amount($item[Li\'l Pirate Costume]) > 0 && canChangeToFamiliar($familiar[Trick-or-Treating Tot]) && (auto_my_path() != "Heavy Rains"))
-	{
-		use_familiar($familiar[Trick-or-Treating Tot]);
-		autoEquip($item[Li\'l Pirate Costume]);
-		handleFamiliar($familiar[Trick-or-Treating Tot]);
-	}
-
-	if(auto_my_path() == "Heavy Rains")
-	{
-		buffMaintain($effect[Sinuses For Miles], 0, 1, 1);
-	}
+	
+	// Outside of AG, if we have 3+ effect wishes we'll be wishing for Sinuses for Miles instead
+	boolean considerCloverForInhaler = (in_avantGuard() || auto_totalEffectWishesAvailable() < 3) && auto_is_valid($item[Mick\'s IcyVapoHotness Inhaler]);
+	considerCloverForInhaler = considerCloverForInhaler && zone_isAvailable($location[The Castle in the Clouds in the Sky (Top Floor)]);
+	
 	// Target 1000 + 400% = 5000 meat per brigand. Of course we want more, but don\'t bother unless we can get this.
 	float meat_need = 400.00;
-	if(item_amount($item[Mick\'s IcyVapoHotness Inhaler]) > 0)
+	//count inhaler if we have one or if we have a clover to obtain one and can use one
+	if((item_amount($item[Mick\'s IcyVapoHotness Inhaler]) > 0) || (cloversAvailable() > 0 && considerCloverForInhaler))
 	{
 		meat_need = meat_need - 200;
 	}
-	if((my_class() == $class[Vampyre]) && have_skill($skill[Wolf Form]) && (0 == have_effect($effect[Wolf Form])))
+	if(in_darkGyffte() && have_skill($skill[Wolf Form]) && (0 == have_effect($effect[Wolf Form])))
 	{
 		meat_need = meat_need - 150;
 	}
-	if(zataraAvailable() && (0 == have_effect($effect[Meet the Meat])))
+	if(zataraAvailable() && (0 == have_effect($effect[Meet the Meat])) & auto_is_valid($effect[Meet the Meat]))
 	{
 		meat_need = meat_need - 100;
 	}
 
-	if(canChangeFamiliar()) {
+	familiar famChoice = get_property("auto_familiarChoice").to_familiar();
+	if(canChangeFamiliar() && famChoice != $familiar[none])
+	{
 		// if we're in a 100% run, this property returns "none" which will unequip our familiar and ruin a 100% run.
-		use_familiar(to_familiar(get_property("auto_familiarChoice")));
+		use_familiar(famChoice);
 	}
 	equipMaximizedGear();
-	float meatDropHave = meat_drop_modifier();
+	float meatDropHave = provideMeat(1800, true, true);
 
-	if (isActuallyEd() && have_skill($skill[Curse of Fortune]) && item_amount($item[Ka Coin]) > 0)
+	if(isActuallyEd() && have_skill($skill[Curse of Fortune]) && item_amount($item[Ka Coin]) > 0)
 	{
 		meatDropHave = meatDropHave + 200;
 	}
@@ -1688,26 +1858,18 @@ boolean L12_themtharHills()
 			auto_log_info("The min should be enough! Doing it!!", "purple");
 		}
 	}
+	
+	if (considerCloverForInhaler)
+	{
+		if(have_effect($effect[Sinuses For Miles]) <= 0 && item_amount($item[Mick\'s IcyVapoHotness Inhaler]) < 1 && cloversAvailable() > 0)
+		{
+			//use clover to get inhaler
+			return autoLuckyAdv($location[The Castle in the Clouds in the Sky (Top Floor)]);
+		}
+	}
 
-
-	buffMaintain($effect[Disco Leer], 10, 1, 1);
-	buffMaintain($effect[Polka of Plenty], 8, 1, 1);
-	buffMaintain($effect[Sinuses For Miles], 0, 1, 1);
-	buffMaintain($effect[Greedy Resolve], 0, 1, 1);
-	buffMaintain($effect[Kindly Resolve], 0, 1, 1);
-	buffMaintain($effect[Heightened Senses], 0, 1, 1);
-	buffMaintain($effect[Big Meat Big Prizes], 0, 1, 1);
-	buffMaintain($effect[Fortunate Resolve], 0, 1, 1);
-	buffMaintain($effect[Human-Machine Hybrid], 0, 1, 1);
-	buffMaintain($effect[Human-Constellation Hybrid], 0, 1, 1);
-	buffMaintain($effect[Human-Humanoid Hybrid], 0, 1, 1);
-	buffMaintain($effect[Human-Fish Hybrid], 0, 1, 1);
-	buffMaintain($effect[Cranberry Cordiality], 0, 1, 1);
-	buffMaintain($effect[Car-Charged], 0, 1, 1);
-	buffMaintain($effect[Heart of Pink], 0, 1, 1);
-	buffMaintain($effect[Sweet Heart], 0, 1, 20);
-	bat_formWolf();
-	zataraSeaside("meat");
+	auto_getCitizenZone("meat"); //because it can take a turn, get this before getting any other buffs
+	provideMeat(1800, true, false); // Do as much as possible to get meat drops
 
 	{
 		equipWarOutfit();
@@ -1751,7 +1913,7 @@ boolean L12_themtharHills()
 
 boolean LX_obtainChaosButterfly()
 {
-	if(in_bhy() || in_pokefam())
+	if(in_bhy() || in_pokefam() || in_glover())
 	{
 		return false;
 	}
@@ -1823,6 +1985,10 @@ boolean L12_farm()
 	if(get_property("sidequestFarmCompleted") != "none")
 	{
 		set_property("auto_skipL12Farm", "true");
+		return false;
+	}
+	if(auto_warEnemiesRemaining() == 0 && get_property("auto_L12FarmStage").to_int() < 4)
+	{
 		return false;
 	}
 	if(internalQuestStatus("questL12War") != 1)
@@ -1910,110 +2076,101 @@ boolean L12_clearBattlefield()
 			cli_execute("garden pick");
 		}
 	}
-
 	if(in_koe())
 	{
 		return L12_koe_clearBattlefield();
 	}
-
 	if(in_pokefam())
 	{
 		return L12_pokefam_clearBattlefield();
 	}
-
 	if (internalQuestStatus("questL12War") != 1)
 	{
 		return false;
 	}
-
-	WarPlan sideQuests = auto_warSideQuestsState();
-	boolean nunsCheck = (get_property("auto_skipNuns").to_boolean() ? true : sideQuests.do_nuns);
-	// don't adventure on the battlefield if we haven't completed all 3 available sidequests.
-	// this may need some exceptions for paths added where certain sidequests are not possible.
-	if (auto_warSide() == "fratboy")
+	int enemies_defeated = get_property("hippiesDefeated").to_int();
+	if(auto_warSide() == "hippy")
 	{
-		if (!sideQuests.do_arena || !sideQuests.do_junkyard || !sideQuests.do_lighthouse)
+		enemies_defeated = get_property("fratboysDefeated").to_int();
+	}
+	if(enemies_defeated >= 1000)
+	{
+		return false;	//already done
+	}
+	
+	WarPlan quest_done = auto_warSideQuestsState();
+	WarPlan quest_planned = auto_bestWarPlan();
+	//which sidequests have we reached already?
+	WarPlan quest_reached;
+	if(auto_warSide() == "fratboy")
+	{
+		quest_reached.do_arena = true;
+		quest_reached.do_junkyard = true;
+		quest_reached.do_lighthouse = true;
+		if(enemies_defeated >= 64)
 		{
-			return false;
+			quest_reached.do_orchard = true;
+		}
+		if(enemies_defeated >= 192)
+		{
+			quest_reached.do_nuns = true;
+		}
+		if(enemies_defeated >= 458)
+		{
+			quest_reached.do_farm = true;
 		}
 	}
 	else
 	{
-		if (!sideQuests.do_orchard || !nunsCheck || !sideQuests.do_farm)
+		quest_reached.do_farm = true;
+		quest_reached.do_nuns = true;
+		quest_reached.do_orchard = true;
+		if(enemies_defeated >= 64)
 		{
-			return false;
+			quest_reached.do_lighthouse = true;
+		}
+		if(enemies_defeated >= 192)
+		{
+			quest_reached.do_junkyard = true;
+		}
+		if(enemies_defeated >= 458)
+		{
+			quest_reached.do_arena = true;
 		}
 	}
-
-	if (get_property("hippiesDefeated").to_int() < 64 && get_property("fratboysDefeated").to_int() < 64)
+	
+	//should we wait for a sidequest to be done first before clearing out the battlefield?
+	boolean wait_for_arena = !quest_done.do_arena && quest_planned.do_arena && quest_reached.do_arena;
+	boolean wait_for_junkyard = !quest_done.do_junkyard && quest_planned.do_junkyard && quest_reached.do_junkyard;
+	boolean wait_for_lighthouse = !quest_done.do_lighthouse && quest_planned.do_lighthouse && quest_reached.do_lighthouse;
+	boolean wait_for_orchard = !quest_done.do_orchard && quest_planned.do_orchard && quest_reached.do_orchard;
+	boolean wait_for_nuns = !quest_done.do_nuns && quest_planned.do_nuns && quest_reached.do_nuns;
+	boolean wait_for_farm = !quest_done.do_farm && quest_planned.do_farm && quest_reached.do_farm;
+	if(wait_for_arena || wait_for_junkyard || wait_for_lighthouse || wait_for_orchard || wait_for_nuns || wait_for_farm)
 	{
-		auto_log_info("First 64 combats. To orchard/lighthouse", "blue");
-		if((item_amount($item[Stuffing Fluffer]) == 0) && (item_amount($item[Cashew]) >= 3))
+		return false;		//we are waiting for a sidequest to finish first
+	}
+
+	if(enemies_defeated < 64 && auto_is_valid($item[Stuffing Fluffer]))
+	{
+		if(item_amount($item[Stuffing Fluffer]) == 0 && item_amount($item[Cashew]) >= 3)
 		{
-			cli_execute("make 1 stuffing fluffer");
+			create(1, $item[stuffing fluffer]);
 		}
-		if((item_amount($item[Stuffing Fluffer]) == 0) && (item_amount($item[Cornucopia]) > 0) && glover_usable($item[Cornucopia]))
+		if(item_amount($item[Stuffing Fluffer]) == 0 && item_amount($item[Cornucopia]) > 0 && auto_is_valid($item[Cornucopia]))
 		{
-			use(1, $item[Cornucopia]);
-			if((item_amount($item[Stuffing Fluffer]) == 0) && (item_amount($item[Cashew]) >= 3))
-			{
-				cli_execute("make 1 stuffing fluffer");
-			}
-			return true;
+			return use(1, $item[Cornucopia]);
 		}
 		if(item_amount($item[Stuffing Fluffer]) > 0)
 		{
-			use(1, $item[Stuffing Fluffer]);
-			return true;
-		}
-		equipWarOutfit();
-		return warAdventure();
-	}
-
-	if (auto_warSide() == "fratboy")
-	{
-		if (!sideQuests.do_orchard)
-		{
-			return false;
+			auto_log_info("Detonating a [Stuffing Fluffer] which should kill 36-46 soldiers on each side.", "blue");
+			return use(1, $item[Stuffing Fluffer]);
 		}
 	}
-	else
-	{
-		if (!sideQuests.do_lighthouse)
-		{
-			return false;
-		}
-	}
-
-	if (get_property("hippiesDefeated").to_int() < 192 && get_property("fratboysDefeated").to_int() < 192)
-	{
-		auto_log_info("Getting to the nunnery/junkyard", "blue");
-		equipWarOutfit();
-		return warAdventure();
-	}
-
-	if (auto_warSide() == "fratboy")
-	{
-		if (!nunsCheck)
-		{
-			return false;
-		}
-	}
-	else
-	{
-		if (!sideQuests.do_junkyard)
-		{
-			return false;
-		}
-	}
-
-	if (get_property("hippiesDefeated").to_int() < 1000 && get_property("fratboysDefeated").to_int() < 1000)
-	{
-		auto_log_info("Doing the wars.", "blue");
-		equipWarOutfit();
-		return warAdventure();
-	}
-	return false;
+	
+	auto_log_info("Doing the wars.", "blue");
+	equipWarOutfit();
+	return warAdventure();
 }
 
 boolean L12_finalizeWar()
@@ -2022,12 +2179,12 @@ boolean L12_finalizeWar()
 	{
 		return L12_koe_finalizeWar();
 	}
-	if (internalQuestStatus("questL12War") != 1)
+	if(internalQuestStatus("questL12War") != 1)
 	{
 		return false;
 	}
 
-	if (get_property("hippiesDefeated").to_int() < 1000 && get_property("fratboysDefeated").to_int() < 1000)
+	if(get_property("hippiesDefeated").to_int() < 1000 && get_property("fratboysDefeated").to_int() < 1000)
 	{
 		return false;
 	}
@@ -2036,11 +2193,29 @@ boolean L12_finalizeWar()
 	{
 		return false;
 	}
+	if(robot_delay("outfit3"))
+	{
+		return false;
+	}
+	if(is_professor())
+	{
+		return false; //need to wait until werewolf because can't survive combat long enough as a Prof
+	}
 
 	if(possessOutfit("War Hippy Fatigues"))
 	{
 		auto_log_info("Getting dimes.", "blue");
-		outfit("War Hippy Fatigues");
+		if(in_wereprof())
+		{
+			//Need to manually equip because professor
+			if(!have_equipped($item[bullet-proof corduroys])) equip($item[bullet-proof corduroys]);
+			if(!have_equipped($item[round purple sunglasses])) equip($item[round purple sunglasses]);
+			if(!have_equipped($item[reinforced beaded headband])) equip($item[reinforced beaded headband]);
+		}
+		else
+		{
+			outfit("War Hippy Fatigues");
+		}
 		foreach it in $items[padl phone, red class ring, blue class ring, white class ring]
 		{
 			sell(it.buyer, item_amount(it), it);
@@ -2049,7 +2224,7 @@ boolean L12_finalizeWar()
 		{
 			sell(it.buyer, item_amount(it) - 1, it);
 		}
-		if (isActuallyEd())
+		if(isActuallyEd())
 		{
 			foreach it in $items[kick-ass kicks, perforated battle paddle, bottle opener belt buckle, keg shield, giant foam finger, war tongs, energy drink IV, Elmley shades, beer bong]
 			{
@@ -2060,7 +2235,17 @@ boolean L12_finalizeWar()
 	if(possessOutfit("Frat Warrior Fatigues"))
 	{
 		auto_log_info("Getting quarters.", "blue");
-		outfit("Frat Warrior Fatigues");
+		if(in_wereprof())
+		{
+			//Need to manually equip because professor
+			if(!have_equipped($item[beer helmet])) equip($item[beer helmet]);
+			if(!have_equipped($item[distressed denim pants])) equip($item[distressed denim pants]);
+			if(!have_equipped($item[bejeweled pledge pin])) equip($item[bejeweled pledge pin]);
+		}
+		else
+		{
+			outfit("Frat Warrior Fatigues");
+		}
 		foreach it in $items[pink clay bead, purple clay bead, green clay bead, communications windchimes]
 		{
 			sell(it.buyer, item_amount(it), it);
@@ -2069,7 +2254,7 @@ boolean L12_finalizeWar()
 		{
 			sell(it.buyer, item_amount(it) - 1, it);
 		}
-		if (isActuallyEd())
+		if(isActuallyEd())
 		{
 			foreach it in $items[hippy protest button, Lockenstock&trade; sandals, didgeridooka, wicker shield, oversized pipe, fire poi, Gaia beads, hippy medical kit, flowing hippy skirt, round green sunglasses]
 			{
@@ -2079,7 +2264,7 @@ boolean L12_finalizeWar()
 	}
 
 	// Just in case we need the extra turngen to complete this day
-	if (my_class() == $class[Vampyre])
+	if(in_darkGyffte())
 	{
 		int have = item_amount($item[monstar energy beverage]) + item_amount($item[carbonated soy milk]);
 		if(have < 5)
@@ -2099,7 +2284,7 @@ boolean L12_finalizeWar()
 	}
 
 	int have = item_amount($item[filthy poultice]) + item_amount($item[gauze garter]);
-	if (have < 10 && !isActuallyEd())
+	if(have < 10 && !isActuallyEd())
 	{
 		int need = 10 - have;
 		if(!get_property("auto_hippyInstead").to_boolean())
@@ -2116,6 +2301,13 @@ boolean L12_finalizeWar()
 
 	if(possessOutfit("War Hippy Fatigues"))
 	{
+		if(in_wereprof())
+		{
+			//Need to manually equip because professor
+			if(!have_equipped($item[bullet-proof corduroys])) equip($item[bullet-proof corduroys]);
+			if(!have_equipped($item[round purple sunglasses])) equip($item[round purple sunglasses]);
+			if(!have_equipped($item[reinforced beaded headband])) equip($item[reinforced beaded headband]);
+		}
 		while($coinmaster[Dimemaster].available_tokens >= 5)
 		{
 			cli_execute("make " + $coinmaster[Dimemaster].available_tokens/5 + " fancy seashell necklace");
@@ -2132,6 +2324,13 @@ boolean L12_finalizeWar()
 
 	if(possessOutfit("Frat Warrior Fatigues"))
 	{
+		if(in_wereprof())
+		{
+			//Need to manually equip because professor
+			if(!have_equipped($item[beer helmet])) equip($item[beer helmet]);
+			if(!have_equipped($item[distressed denim pants])) equip($item[distressed denim pants]);
+			if(!have_equipped($item[bejeweled pledge pin])) equip($item[bejeweled pledge pin]);
+		}
 		while($coinmaster[Quartersmaster].available_tokens >= 5)
 		{
 			cli_execute("make " + $coinmaster[Quartersmaster].available_tokens/5 + " commemorative war stein");
@@ -2157,6 +2356,12 @@ boolean L12_finalizeWar()
 		doRest();
 	}
 	equipWarOutfit();
+	//AoSOL buffs
+	if(in_aosol())
+	{
+		buffMaintain($effect[Queso Fustulento], 10, 1, 10);
+		buffMaintain($effect[Tricky Timpani], 30, 1, 10);
+	}
 	acquireHP();
 	auto_log_info("Let's fight the boss!", "blue");
 
@@ -2182,7 +2387,7 @@ boolean L12_finalizeWar()
 	}
 
 	cli_execute("refresh quests");
-	if (internalQuestStatus("questL12War") == 1)
+	if(internalQuestStatus("questL12War") == 1)
 	{
 		abort("Failing to complete the war.");
 	}
@@ -2190,68 +2395,56 @@ boolean L12_finalizeWar()
 	return true;
 }
 
-void warChoiceHandler(int choice)
-{
-	auto_log_debug("void warChoiceHandler(int choice)");
-
-	switch (choice)
-	{
-		case 139:
-			run_choice(3);		//fight a War Hippy (space) cadet for outfit pieces
-			break;
-		case 140:
-			run_choice(3);		//fight a War Hippy drill sergeant for outfit pieces
-			break;
-		case 141: // Blockin' Out the Scenery (wearing Frat Boy Ensemble) 
-			run_choice(1);		//get 50 mysticality
-			break;
-		case 142: // Blockin' Out the Scenery (wearing Frat Warrior Fatigues)
-			run_choice(3);		//starts the war. skips adventure if already started.
-			break;
-		case 143:
-			run_choice(3);		//fight a War Pledgefor outfit pieces
-			break;
-		case 144:
-			run_choice(3);		//fight a Frat Warrior drill sergeant for outfit pieces
-			break;
-		case 145: // Fratacombs (wearing Filthy Hippy Disguise) 
-			run_choice(1);		//get 50 muscle
-			break;
-		case 146: // Fratacombs (wearing War Hippy Fatigues)
-			run_choice(3);		//starts the war. skips adventure if already started.
-			break;
-		case 147:
-			run_choice(3);		//open the pond
-			break;
-		case 148:
-			run_choice(1);		//open the back 40
-			break;
-		case 149:
-			run_choice(2);		//open the other back 40
-			break;
-		default:
-			auto_log_warning("void warChoiceHandler(int choice) somehow hit default. this should not happen");
-			break;
-	}
-}
-
 boolean L12_islandWar()
 {
-	if (internalQuestStatus("questL12War") == 0 && get_property("lastIslandUnlock").to_int() != my_ascensions())
+	if(internalQuestStatus("questL12War") == 0 && get_property("lastIslandUnlock").to_int() != my_ascensions())
 	{
 		return LX_islandAccess();
 	}
-	if (L12_preOutfit() || L12_getOutfit() || L12_startWar())
+	if(robot_delay("outfit"))
+	{
+		return false;	//delay for You, Robot path
+	}
+	if(get_property("auto_delayWar") == true)
+	{
+		set_property("auto_delayWar", false);
+		return false;	//delay war at Nuns so we can maybe get the Inhaler
+	}
+	if(L12_preOutfit() || L12_getOutfit() || L12_startWar())
 	{
 		return true;
 	}
-	if (L12_gremlins() || L12_flyerFinish() || L12_sonofaBeach() || L12_sonofaFinish() || L12_filthworms() || L12_orchardFinalize() || L12_themtharHills() || L12_farm())
+	if(L12_filthworms() || L12_orchardFinalize() || L12_gremlins() || L12_flyerFinish() || L12_sonofaBeach() || L12_sonofaFinish() || L12_themtharHills() || L12_farm())
 	{
 		return true;
 	}
-	if (L12_clearBattlefield() || L12_finalizeWar())
+	if(L12_clearBattlefield() || L12_finalizeWar())
 	{
 		return true;
 	}
 	return false;
+}
+
+boolean L12_opportunisticWarStart()
+{
+	// If we have all the resources to start the war in one turn, do that.
+	if(internalQuestStatus("questL12War") != 0) { return false; }
+	if(!haveWarOutfit(true))                    { return false; }
+	if(!L12_singleNCForWarStart())              { return false; }
+	if(remainingNCForcesToday() == 0)           { return false; }
+	// Dinghy the island if we can.
+	if (get_property("lastIslandUnlock").to_int() != my_ascensions())
+	{
+		if (available_amount($item[Pirate dinghy])>0)
+		{
+			use($item[Pirate dinghy]);
+		}
+	}
+	if (get_property("lastIslandUnlock").to_int() != my_ascensions()) { return false; }
+	return L12_startWar();
+}
+
+boolean L12_singleNCForWarStart()
+{
+	return (auto_haveCCSC() || have_skill($skill[Comprehensive Cartography]));
 }

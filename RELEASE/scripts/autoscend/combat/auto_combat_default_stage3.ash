@@ -2,11 +2,24 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 {
 	// stage 3 = debuff: delevel, stun, curse, damage over time
 	string retval;
+
+	// Set to false because instakills are in stage 2 and if we get here, it was not successful
+	set_property("auto_instakillSuccess", false);
+
+	//Unskip stage 2
+	if(get_property("auto_skipStage2").to_boolean()) set_property("auto_skipStage2", false);
+
+	//Skip stage 3 if set
+	if(get_property("auto_skipStage3").to_boolean()) return "";
 	
 	// Path = Heavy Rains
 	retval = auto_combatHeavyRainsStage3(round, enemy, text);
 	if(retval != "") return retval;
-	
+
+	// Path = zombie slayer
+	retval = auto_combatZombieSlayerStage3(round, enemy, text);
+	if(retval != "") return retval;
+
 	//delevel (10 + medicine_level)% in avatar of west of loathing path
 	if(canUse($skill[Bad Medicine]) && (my_mp() >= (3 * mp_cost($skill[Bad Medicine]))))
 	{
@@ -19,7 +32,7 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 	{
 		return useSkill($skill[Intimidating Bellow]);
 	}
-	
+
 	//if monster level adjustment is over 150 then they are immune to staggers. many deleveling skills also stagger.
 	int enemy_la = monster_level_adjustment();
 	
@@ -29,6 +42,101 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 		return useSkill($skill[Tunnel Downwards]);
 	}
 	
+	//iotm skill that duplicates dropped items
+	//prioritize grey goose over xo and extinguisher because the drones last multiple fights until they are consumed 
+	if(canUse($skill[Emit Matter Duplicating Drones]) && my_familiar() == $familiar[Grey Goose])
+	{
+		boolean emitDrones = false;
+		boolean canExtingo = true;
+		if(auto_fireExtinguisherCharges() <= 30 || !canUse($skill[Fire Extinguisher: Polar Vortex], false))
+		{
+			canExtingo = false;
+		}
+		boolean drones = gooseExpectedDrones() >= 1; //only want to try if we expect any number of drones.
+
+		//dupe a sonar-in-a-biscuit if we're lucky, only want to try it if we need more than 1 biscuit
+		if((item_drops(enemy) contains $item[sonar-in-a-biscuit]) && (count(item_drops(enemy)) <= 2) && (internalQuestStatus("questL04Bat") <= 1) && drones)
+		{
+			emitDrones = true;
+		}
+		
+		//dupe stone wool
+		if((item_drops(enemy) contains $item[stone wool]) && item_amount($item[stone wool]) < 2 && drones)
+		{
+			emitDrones = true;
+		}
+
+		//dupe goat cheese
+		if(enemy == $monster[Dairy goat] && canExtingo = false && item_amount($item[Goat Cheese]) < 3 && drones)
+		{
+			emitDrones = true;
+		}
+
+		//dupe Smut Orc Keepsake
+		if(enemy == $monster[Smut orc pervert] && auto_autumnatonQuestingIn() != $location[The Smut Orc Logging Camp] && my_location() == $location[The Smut Orc Logging Camp] && drones)
+		{
+			emitDrones = true;
+		}
+		
+		//dupe some hedge trimmers if we're lucky
+		if(canExtingo = false && ($monsters[bearpig topiary animal, elephant (meatcar?) topiary animal, spider (duck?) topiary animal] contains enemy) && auto_autumnatonQuestingIn() != $location[Twin Peak] && hedgeTrimmersNeeded() > 1 && drones)
+		{
+			emitDrones = true;
+		}
+		
+		//dupe some stars/lines
+		if(my_location() == $location[The Hole in the Sky] && item_drops(enemy) contains $item[star] && item_drops(enemy) contains $item[line] && needStarKey() && (item_amount($item[star]) < 8 && item_amount($item[line]) < 7) && drones)
+		{
+			emitDrones = true;
+		}
+
+		//dupe some blackberries
+		if(enemy == $monster[Blackberry bush] && drones)
+		{
+			emitDrones = true;
+		}
+
+		//dupe some glark cables
+		if(enemy == $monster[Red butler] && drones)
+		{
+			emitDrones = true;
+		}
+		
+		//dupe some bowling balls if we can't use an Industrial Fire Extinguisher
+		if(canExtingo = false && (enemy == $monster[Pygmy bowler] && (get_property("hiddenBowlingAlleyProgress").to_int() + item_amount($item[Bowling Ball])) < 6) && drones)
+		{
+			emitDrones = true;
+		}
+
+		//dupe tomb ratchets if we're lucky
+		if((enemy == $monster[Tomb rat king]) && ((item_amount($item[Crumbling Wooden Wheel]) + item_amount($item[Tomb Ratchet])) < 10) && drones)
+		{
+			emitDrones = true;
+		}
+
+		//dupe Cursed Dragon Wishbone and Cursed Bat Paw if in AoSOL
+		if(($monsters[two-headed shadow bat, shadowboner shadowdagon] contains enemy) && drones)
+		{
+			emitDrones = true;
+		}
+		
+		//dupe GROPs
+		if(enemy == $monster[Green Ops Soldier] && drones){
+			emitDrones = true;
+		}
+
+		if(dronesOut()) //If we have drones out, let's not use the skill again
+		{
+			emitDrones = false;
+		}
+
+		if(emitDrones)
+		{
+			handleTracker(enemy, $skill[Emit Matter Duplicating Drones], "auto_otherstuff");
+			return useSkill($skill[Emit Matter Duplicating Drones]);			
+		}
+	}
+
 	//iotm skill that can be used on any combat round, repeatedly until an item is stolen
 	if(canUse($skill[Hugs and Kisses!]) && (my_familiar() == $familiar[XO Skeleton]) && (get_property("_xoHugsUsed").to_int() < 11))
 	{
@@ -65,82 +173,41 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 		}
 	}
 
-	//iotm skill that can be used on any combat round, repeatedly until an item is stolen
-	//prioritize XO over extinguisher since extinguisher has other uses
-	//take into account if a yellow ray has been used. Must have been one that doesn't insta-kill
-	if(canUse($skill[Fire Extinguisher: Polar Vortex], false) && auto_fireExtinguisherCharges() > 10)
+	if(wantToDouse(enemy) && round <= maxRoundsToDouse(enemy) && !(get_property("_douseFoeSuccess").to_boolean())) // dousing can have a low chance of success, so only do it for a while
 	{
-		boolean forceDrop = false;
-		string combatState = get_property("auto_combatHandler");
-		//only force 1 scent gland from each filthworm
-		if(!contains_text(combatState, "yellowray"))
+		skill douse = $skill[douse foe];
+		boolean douseAvailable = canUse(douse, false) && auto_dousesRemaining()>0;
+		if(douseAvailable)
 		{
-			if(enemy == $monster[Larval Filthworm] && item_amount($item[filthworm hatchling scent gland]) < 1)
-			{
-				forceDrop = true;
-			}
-			if(enemy == $monster[Filthworm Drone] && item_amount($item[filthworm drone scent gland]) < 1)
-			{
-				forceDrop = true;
-			}
-			if(enemy == $monster[Filthworm Royal Guard] && item_amount($item[filthworm royal guard scent gland]) < 1)
-			{
-				forceDrop = true;
-			}
+			handleTracker(enemy, douse, "auto_otherstuff");
+			return useSkill(douse);
 		}
-		
+	}
+	
+	if(wantToForceDrop(enemy))
+	{
+		boolean polarVortexAvailable = canUse($skill[Fire Extinguisher: Polar Vortex], false) && auto_fireExtinguisherCharges() > 10;
+		boolean mildEvilAvailable = canUse($skill[Perpetrate Mild Evil],false) && get_property("_mildEvilPerpetrated").to_int() < 3;
+		boolean swoopAvailable = canUse($skill[Swoop like a Bat], true) && get_property("_batWingsSwoopUsed").to_int() < 11;
 
-		// polar vortex is more likely to pocket an item the higher the drop rate. Unlike XO which has equal chance for all drops
-		// reserve 30 charge for filth worms
-		if(auto_fireExtinguisherCharges() > 30)
+		// mild evil and swoop can only pick pocket. Use them before fire extinguisher
+		if(swoopAvailable)
 		{
-			int dropsFromYR = 0;
-			if(contains_text(combatState, "yellowray"))
-			{
-				dropsFromYR = 1;
-			}
-
-			if($monsters[bearpig topiary animal, elephant (meatcar?) topiary animal, spider (duck?) topiary animal] contains enemy)
-			{
-					//copied following code from catBurglarHeistDesires
-					//TODO - create a common function for this instead
-					int twinPeakProgress = get_property("twinPeakProgress").to_int();
-					boolean needStench = ((twinPeakProgress & 1) == 0);
-					boolean needFood = ((twinPeakProgress & 2) == 0);
-					boolean needJar = ((twinPeakProgress & 4) == 0);
-					boolean needInit = (needStench || needFood || needJar || (twinPeakProgress == 7));
-					int neededTrimmers = -(item_amount($item[rusty hedge trimmers]) + dropsFromYR);
-					if(needStench) neededTrimmers++;
-					if(needFood) neededTrimmers++;
-					if(needJar) neededTrimmers++;
-					if(needInit) neededTrimmers++;
-
-					if(neededTrimmers > 0)
-					{
-						forceDrop = true;
-					}
-			}
-
-			// Number of times bowled is 1 less than hiddenBowlingAlleyProgress. Need 5 bowling balls total, 5+1 = 6 needed in this conditional
-			if(enemy == $monster[Pygmy bowler] && (get_property("hiddenBowlingAlleyProgress").to_int() + item_amount($item[Bowling Ball]) + dropsFromYR) < 6)
-			{
-				forceDrop = true;
-			}
-
-			if(enemy == $monster[Dairy Goat] && (item_amount($item[Goat Cheese]) + dropsFromYR) < 3)
-			{
-				forceDrop = true;
-			}	
+			handleTracker(enemy, $skill[Swoop like a Bat], "auto_otherstuff");
+			return useSkill($skill[Swoop like a Bat]);	
 		}
-				
-
-		if(forceDrop)
+		if(mildEvilAvailable)
+		{
+			handleTracker(enemy, $skill[Perpetrate Mild Evil], "auto_otherstuff");
+			return useSkill($skill[Perpetrate Mild Evil]);	
+		}
+		if(polarVortexAvailable)
 		{
 			handleTracker(enemy, $skill[Fire Extinguisher: Polar Vortex], "auto_otherstuff");
 			return useSkill($skill[Fire Extinguisher: Polar Vortex]);	
 		}
 	}
-	
+
 	//delevel ~3% per combat round for rest of combat.
 	//if sauceror and you kill enemy with a spell you regain up to 50MP. this is the primary source of MP for a sauceror.
 	//with itchy curse finger skill it will also stagger on the turn it is cast
@@ -153,8 +220,7 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 	{
 		doWeaksauce = true;
 	}
-	// if(enemy == $monster[invader bullet]) // TODO: on version bump
-	if(enemy.to_string().to_lower_case() == "invader bullet")
+	if(enemy == $monster[invader bullet])
 	{
 		doWeaksauce = false;
 	}
@@ -169,13 +235,18 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 		enemy_la = 151;
 	}
 
-	// if(enemy == $monster[invader bullet]) // TODO: on version bump
-	if(enemy.to_string().to_lower_case() == "invader bullet")
+	if(enemy == $monster[invader bullet])
 	{
 		enemy_la = 151;
 	}
 
 	if($monsters[Naughty Sorceress, Naughty Sorceress (2)] contains enemy && !get_property("auto_confidence").to_boolean())
+	{
+		enemy_la = 151;
+	}
+
+	// some dark gyffte boss's are stagger immune
+	if($monsters[%alucard%, Jake Norris, Ricardo Belmont, Jayden Belmont, Sharona, Greg Dagreasy, Travis Belmont, Chad Alacarte] contains enemy)
 	{
 		enemy_la = 151;
 	}
@@ -186,6 +257,32 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 		if(canUse($skill[Curse of Weaksauce]) && have_skill($skill[Itchy Curse Finger]) && (my_mp() >= 60) && doWeaksauce)
 		{
 			return useSkill($skill[Curse Of Weaksauce]);
+		}
+
+		//HP reduction if the monster has high HP
+		if(monster_hp() > 1500 || enemy.physical_resistance > 90)
+		{
+			if(canUse($skill[Surprisingly Sweet Slash]) && auto_remainingCandyCaneSlashes() > 1) // reserve a slash for wall of bones
+			{
+				return useSkill($skill[Surprisingly Sweet Slash]); // 75% less HP
+			}
+			if(canUse($item[autumnic bomb])) //50% less hp && prismatic damage on hit
+			{
+				return useItem($item[autumnic bomb]);
+			}
+		}
+
+		// delevel and 75% less HP if you have a candy cane sword cane
+		// Need this separate because want to reserve the Slash in Avant Guard for high HP bodyguards
+		if (canUse($skill[Surprisingly Sweet Slash]) && !in_avantGuard() && auto_remainingCandyCaneSlashes() > 1) // reserve a slash for wall of bones
+		{
+			return useSkill($skill[Surprisingly Sweet Slash]);
+		}
+
+		//delevel if you have a loofah lei
+		if(canUse($skill[loofah lei lasso]))
+		{
+			return useSkill($skill[loofah lei lasso]);
 		}
 
 		if($item[Daily Affirmation: Keep Free Hate In Your Heart].combat)
@@ -206,7 +303,32 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 
 		if (canUse($skill[Curse Of Weaksauce]) && my_class() == $class[Sauceror] && doWeaksauce)
 		{
-			return useSkill($skill[Curse Of Weaksauce]);
+			//Saucerors use Weaksauce to get MP, but no more MP will be coming if there isn't enough MP left to cast a spell, mortar can not have been launched yet at this point
+			//if mp >= 60 Weaksauce has probably been cast above already
+			int MPafterWeaksauce = my_mp() - mp_cost($skill[Curse Of Weaksauce]);
+			boolean canCastAfterWeaksauce;
+			foreach sp in $skills[Saucestorm,Stuffed Mortar Shell,Saucegeyser]
+			{
+				if(canUse(sp,false) && MPafterWeaksauce >= mp_cost(sp))
+				{
+					canCastAfterWeaksauce = true;
+					break;
+				}
+			}
+			if(!canCastAfterWeaksauce)
+			{	if(canUse($skill[Wave of Sauce], false) && (monster_element(enemy) != $element[hot]) && MPafterWeaksauce >= mp_cost($skill[Wave of Sauce]))
+				{
+					canCastAfterWeaksauce = true;
+				}
+				else if(canUse($skill[Saucecicle], false) && (monster_element(enemy) != $element[cold]) && MPafterWeaksauce >= mp_cost($skill[Saucecicle]))
+				{
+					canCastAfterWeaksauce = true;
+				}
+			}
+			if(canCastAfterWeaksauce)
+			{
+				return useSkill($skill[Curse Of Weaksauce]);
+			}
 		}
 
 		if(canUse($skill[Detect Weakness]))
@@ -245,32 +367,179 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 			}
 		}
 
-		if(my_location() == $location[The Smut Orc Logging Camp] && canSurvive(1.0))
+		if(my_location() == $location[The Smut Orc Logging Camp] && canSurvive(1.0) && get_property("chasmBridgeProgress").to_int() < bridgeGoal())
 		{
-			// Listed from Most to Least Damaging to hopefully cause Death on the turn when the Shell hits.
-			if(canUse($skill[Stuffed Mortar Shell]) && have_effect($effect[Spirit of Peppermint]) != 0)
+			boolean coldMortarShell = canUse($skill[Stuffed Mortar Shell]) && have_effect($effect[Spirit of Peppermint]) != 0;
+			skill coldSkillToUse;
+			int coldAttackDamageMultiplier = 1;
+			if(my_class() == $class[Seal Clubber])
 			{
-				return useSkill($skill[Stuffed Mortar Shell]);
+				if(canUse($skill[Lunging Thrust-Smack], false))
+				{
+					coldAttackDamageMultiplier = 3;	//triple elemental bonus
+				}
+				else if(canUse($skill[Thrust-Smack], false))
+				{
+					coldAttackDamageMultiplier = 2;	//double elemental bonus
+				}
 			}
-			else if(canUse($skill[Saucegeyser], false))
+			int coldAttackDamage = numeric_modifier("cold damage")*coldAttackDamageMultiplier;	//todo add ML damage multiplier
+			
+			// Listed from Most to Least Damaging to hopefully cause Death on the turn when the Shell hits.
+			if(canUse($skill[Saucegeyser], false) && numeric_modifier("Cold Spell Damage") > numeric_modifier("Hot Spell Damage"))
 			{
-				return useSkill($skill[Saucegeyser], false);
+				//100% chance of cold Saucegeyser
+				coldSkillToUse = $skill[Saucegeyser];
 			}
 			else if(canUse($skill[Saucecicle], false))
 			{
-				return useSkill($skill[Saucecicle], false);
+				coldSkillToUse = $skill[Saucecicle];
 			}
 			else if(canUse($skill[Cannelloni Cannon], false) && have_effect($effect[Spirit of Peppermint]) != 0)
 			{
-				return useSkill($skill[Cannelloni Cannon], false);
+				coldSkillToUse = $skill[Cannelloni Cannon];
 			}
-			else if(canUse($skill[Northern Explosion], false))
+			else if(canUse($skill[Northern Explosion], false) && !auto_canNorthernExplosionFE())
 			{
-				return useSkill($skill[Northern Explosion], false);
+				coldSkillToUse = $skill[Northern Explosion];
 			}
-			else if($classes[Seal Clubber, Turtle Tamer, Pastamancer, Sauceror, Disco Bandit, Accordion Thief] contains my_class())
+			else if(monster_level_adjustment() < -65 && canUse($skill[Saucestorm], false))
 			{
-				auto_log_warning("None of our preferred [cold] skills available against smut orcs. Engaging in Fisticuffs.", "red");
+				//in extreme case where orcs are reduced to few HP by -ML Saucestorm is better than 50% chance of cold Saucegeyser
+				//todo compare actual damage predictions instead
+				coldSkillToUse = $skill[Saucestorm];
+			}
+			else if(coldAttackDamage > 3*max(1,(69 + monster_level_adjustment())))
+			{
+				//cold bonus weapon attack can also be better than 50% chance of cold Saucegeyser
+				//todo compare actual damage predictions instead
+				if(my_class() == $class[Seal Clubber])
+				{
+					if(canUse($skill[Lunging Thrust-Smack], false))
+					{
+						coldSkillToUse = $skill[Lunging Thrust-Smack];	//triple elemental bonus
+					}
+					else if(canUse($skill[Thrust-Smack], false))
+					{
+						coldSkillToUse = $skill[Thrust-Smack];	//double elemental bonus
+					}
+					else if(canUse($skill[Lunge Smack], false))
+					{
+						coldSkillToUse = $skill[Lunge Smack];
+					}
+				}
+				//other classes default to regular attack later
+			}
+			else if(canUse($skill[Saucegeyser], false) && numeric_modifier("Cold Spell Damage") == numeric_modifier("Hot Spell Damage"))
+			{
+				//equal is 50% chance of cold Saucegeyser. "cold > hot" is used higher in priority. "cold < hot" is 100% hot Saucegeyser and not worth using
+				coldSkillToUse = $skill[Saucegeyser];
+			}
+			else if(in_nuclear() && canUse($skill[Throat Refrigerant], false)){
+				coldSkillToUse = $skill[Throat Refrigerant];
+			}
+			
+			int MPreservedForColdSpells = coldMortarShell ? mp_cost($skill[Stuffed Mortar Shell]) : 0;
+			if(coldSkillToUse != $skill[none])	MPreservedForColdSpells += mp_cost(coldSkillToUse);
+			
+			// Mating Call has unlimited uses and a small effect so unlike other sniff skills there is no reason not to use it here to balance bridge parts except MP cost
+			if(canUse($skill[Gallapagosian Mating Call], false) && my_mp() >= (MPreservedForColdSpells + mp_cost($skill[Gallapagosian Mating Call])))
+			{
+				boolean useMiniSniff = false;
+				boolean sniffedLumber = (isSniffed($monster[Smut Orc Pipelayer]) || isSniffed($monster[Smut Orc Jacker]));
+				boolean sniffedFastener = (isSniffed($monster[Smut Orc Screwer]) || isSniffed($monster[Smut Orc Nailer]));
+				boolean haveLumberBias = (equipped_amount($item[Logging Hatchet]) > 0 && equipped_amount($item[Loadstone]) == 0);
+				boolean haveFastenerBias = (equipped_amount($item[Loadstone]) > 0 && equipped_amount($item[Logging Hatchet]) == 0);
+				
+				if(enemy == $monster[Smut Orc Pipelayer] || enemy == $monster[Smut Orc Jacker])
+				{
+					if(!sniffedLumber)
+					{
+						if(fastenerCount() >= 30 && lumberCount() < 29)
+						{	useMiniSniff = true;
+						}
+						else if(haveFastenerBias && fastenerCount() >= lumberCount())
+						{	useMiniSniff = true;	//will get more fastener from Loadstone
+						}
+						else if(fastenerCount() > (lumberCount() + 2))
+						{	useMiniSniff = true;	//have more fastener, try to make up for it
+						}
+						else if(sniffedFastener && !haveLumberBias && fastenerCount() > lumberCount())
+						{	useMiniSniff = true;	//may have sniffed fastener too hard
+						}
+					}
+				}
+				else if(enemy == $monster[Smut Orc Screwer] || enemy == $monster[Smut Orc Nailer])
+				{
+					if(!sniffedFastener)
+					{
+						if(lumberCount() >= 30 && fastenerCount() < 29)
+						{	useMiniSniff = true;
+						}
+						else if(haveLumberBias && lumberCount() >= fastenerCount())
+						{	useMiniSniff = true;	//will get more lumber from Logging Hatchet
+						}
+						else if(lumberCount() > (fastenerCount() + 2))
+						{	useMiniSniff = true;	//have more lumber, try to make up for it
+						}
+						else if(sniffedLumber && !haveFastenerBias && lumberCount() > fastenerCount())
+						{	useMiniSniff = true;	//may have sniffed lumber too hard
+						}
+					}
+				}
+				if(useMiniSniff)
+				{
+					handleTracker(enemy, $skill[Gallapagosian Mating Call], "auto_sniffs");
+					return useSkill($skill[Gallapagosian Mating Call], false);
+				}
+			}
+			
+			if(coldMortarShell)
+			{
+				return useSkill($skill[Stuffed Mortar Shell]);
+			}
+			else if(coldSkillToUse != $skill[none])
+			{
+				return useSkill(coldSkillToUse, false);
+			}
+			else if(!in_robot() && $classes[Seal Clubber, Turtle Tamer, Pastamancer, Sauceror, Disco Bandit, Accordion Thief] contains my_class())
+			{
+				if(coldAttackDamage > (69 + monster_level_adjustment()) && coldAttackDamage > 0)
+				{
+					//if cold damage bonus > their health make sure an attack that uses elemental bonus gets to be used
+					if(my_class() == $class[Seal Clubber])
+					{
+						if(canUse($skill[Lunging Thrust-Smack], false))
+						{
+							return useSkill($skill[Lunging Thrust-Smack], false);	//triple elemental bonus
+						}
+						else if(canUse($skill[Thrust-Smack], false))
+						{
+							return useSkill($skill[Thrust-Smack], false);	//double elemental bonus
+						}
+						else if(canUse($skill[Lunge Smack], false))
+						{
+							return useSkill($skill[Lunge Smack], false);
+						}
+						else
+						{
+							return "attack with weapon";
+						}
+					}
+					else
+					{
+						return "attack with weapon";
+					}
+				}
+				else if(monster_level_adjustment() <= -25 && canUse($skill[Saucestorm], false))		//todo check predicted damage instead of arbitrary values
+				{
+					auto_log_warning("None of the best [cold] skills available against smut orcs but trying weaker alternative in view of the negative monster level.", "red");
+					return useSkill($skill[Saucestorm], false);
+				}
+				else
+				{
+					auto_log_warning("None of our preferred [cold] skills available against smut orcs. Engaging in Fisticuffs.", "red");
+				}
 			}
 		}
 
@@ -323,6 +592,12 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 		if(canUse($item[Tomayohawk-Style Reflex Hammer]))
 		{
 			return useItem($item[Tomayohawk-Style Reflex Hammer]);
+		}
+
+		//If you have tearaway pants equipped, use its skill
+		if(canUse($skill[Tear Away your Pants!]) && ((get_property("auto_forceNonCombatSource") == "" && !(auto_wantToSniff(enemy, my_location()) && getSniffer(enemy) != $skill[none])) || monster_phylum() == $phylum[plant]))
+		{
+			return useSkill($skill[Tear Away your Pants!]);
 		}
 
 		// skills from Lathe weapons
@@ -383,7 +658,7 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 		
 			//this is for increasing meat income. gain +25 meat per monster, at the cost of letting it act once. If healing is too costly this can be a net loss of meat. until a full cost calculator is made, limit to under 10 HP damage and no more than 20% of your remaining HP.
 			
-			if(canSurvive(5.0) && (get_property("boomBoxSong") == "Total Eclipse of Your Meat") && (expected_damage() < 10) && (auto_my_path() != "Way of the Surprising Fist"))
+			if(canSurvive(5.0) && (get_property("boomBoxSong") == "Total Eclipse of Your Meat") && (expected_damage() < 10) && !in_wotsf())
 			{
 				return useSkill($skill[Sing Along]);
 			}
@@ -419,6 +694,7 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 		}
 	}
 	
+	//weaksauce has probably already been cast in one of several checks above, except when above 150 ML, or without itchy curse finger or mp < 60
 	if(canUse($skill[Curse Of Weaksauce]) && (my_class() == $class[Sauceror]) && (my_mp() >= 32 || haveUsed($skill[Stuffed Mortar Shell])) && doWeaksauce)
 	{
 		return useSkill($skill[Curse Of Weaksauce]);
@@ -428,7 +704,10 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 	if(my_class() == $class[Turtle Tamer] && canUse($skill[Spirit Snap]) && my_mp() > 80)
 	{
 		//storm turtle blessings makes spirit snap cause 15/20/25% buffed muscle as DoT for rest of combat
-		if(have_effect($effect[Blessing of the Storm Tortoise]) > 0 || have_effect($effect[Grand Blessing of the Storm Tortoise]) > 0 || have_effect($effect[Glorious Blessing of the Storm Tortoise]) > 0)
+		//must not block stage4 so should not use if it will kill the monster
+		if((have_effect($effect[Blessing of the Storm Tortoise]) > 0 && monster_hp() > 0.15*my_buffedstat($stat[muscle]))|| 
+		(have_effect($effect[Grand Blessing of the Storm Tortoise]) > 0 && monster_hp() > 0.20*my_buffedstat($stat[muscle])) || 
+		(have_effect($effect[Glorious Blessing of the Storm Tortoise]) > 0 && monster_hp() > 0.25*my_buffedstat($stat[muscle])))
 		{
 			return useSkill($skill[Spirit Snap]);
 		}
@@ -437,6 +716,7 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 	// Multi-round stuns
 	if(canUse($skill[Thunderstrike]) && enemy_la <= 150 && !canSurvive(5.0))
 	{
+		combat_status_add("stunned");
 		return useSkill($skill[Thunderstrike]);
 	}
 
@@ -445,6 +725,7 @@ string auto_combatDefaultStage3(int round, monster enemy, string text)
 		skill stunner = getStunner(enemy);
 		if(stunner != $skill[none])
 		{
+			combat_status_add("stunned");
 			return useSkill(stunner);
 		}
 	}

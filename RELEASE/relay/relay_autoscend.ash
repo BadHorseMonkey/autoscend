@@ -70,27 +70,48 @@ void handleSetting(string type, int x)
 	writeln("<input type='hidden' name='"+set.name+"_oldvalue' value='"+get_property(set.name)+"' />");
 }
 
-void generateTrackingData(string tracked)
+void generateTrackingData(string tracked, string print_between, boolean stacked)
 {
 	int day = 0;
-	string[int] tracking = split_string(get_property(tracked), ",");
+	string[int] tracking = split_string(get_property(tracked), ", ");
 	if(get_property(tracked) == "")
 	{
 		return;
 	}
-	foreach x in tracking
+	string[int] tracking_stacked;
+	int[int] stack_counts;
+	int unique_idx = -1;
+	string last_event = "";
+	foreach idx,event in tracking
 	{
-		if(tracking[x] == "")
+		if (last_event != event)
+		{
+			unique_idx++;
+			tracking_stacked[unique_idx] = event;
+			stack_counts[unique_idx] = 1;
+			last_event = event;
+		}
+		else
+		{
+			stack_counts[unique_idx]++;
+		}
+	}
+	
+	string[int] tracking_to_use = (stacked?tracking_stacked:tracking);
+	
+	foreach idx,event in tracking_to_use
+	{
+		if(event == "")
 		{
 			continue;
 		}
-		matcher paren = create_matcher("[()]", tracking[x]);
-		tracking[x] = replace_all(paren, "");
-		matcher asdon = create_matcher("Asdon Martin:", tracking[x]);
-		tracking[x] = replace_all(asdon, "Asdon Martin -");
-		matcher cheat = create_matcher("CHEAT CODE:", tracking[x]);
-		tracking[x] = replace_all(cheat, "CHEAT CODE -");
-		string[int] current = split_string(tracking[x], ":");
+		matcher paren = create_matcher("[()]", event);
+		event = replace_all(paren, "");
+		matcher asdon = create_matcher("Asdon Martin:", event);
+		event = replace_all(asdon, "Asdon Martin -");
+		matcher cheat = create_matcher("CHEAT CODE:", event);
+		event = replace_all(cheat, "CHEAT CODE -");
+		string[int] current = split_string(event, ":");
 		int curDay = to_int(current[0]);
 		if(curDay > day)
 		{
@@ -99,7 +120,7 @@ void generateTrackingData(string tracked)
 			{
 				writeln("<br><br>");
 			}
-			writeln("Day " + day + ": ");
+			writeln("<b>Day " + day + ":</b>");
 		}
 		string toWrite = "(";
 		for i from 1 to count(current) - 1
@@ -110,9 +131,36 @@ void generateTrackingData(string tracked)
 				toWrite = toWrite + ":";
 			}
 		}
-		toWrite = toWrite + "),";
+		if (stacked)
+		{
+			if (stack_counts[idx] > 1)
+			{
+				toWrite = toWrite + " <b>x"+to_string(stack_counts[idx])+"</b>";
+			}
+		}
+		toWrite = toWrite + ")"+print_between;
 		writeln(toWrite);
 	}
+}
+
+void generateTrackingData(string tracked, boolean stacked)
+{
+	generateTrackingData(tracked, ",", stacked);
+}
+
+void generateTrackingData(string tracked)
+{
+	generateTrackingData(tracked, true);
+}
+
+void generateTrackingDataSplitByNewLine(string tracked, boolean stacked)
+{
+	generateTrackingData(tracked, "<br>", stacked);
+}
+
+void generateTrackingDataSplitByNewLine(string tracked)
+{
+	generateTrackingDataSplitByNewLine(tracked, true);
 }
 
 void write_familiar()
@@ -161,6 +209,32 @@ void write_settings_key()
 	writeln("</table>");
 }
 
+void write_locations_visited()
+{
+	// Display the locations we've spent turns
+	
+	// Make a list of the locations we've visited
+	location[int] ranked_list;
+	foreach loc in $locations[]
+	{
+		if (loc.turns_spent > 0)
+		{
+			ranked_list[count(ranked_list)] = loc;
+		}
+	}
+	// Sort in descending order
+	sort ranked_list by -value.turns_spent;
+	
+	// Write the table
+	writeln("<table style=\"margin-left:auto;margin-right:auto;\">");
+	writeln("<tr><th>Location</th> <th>Turns</th></tr>");
+	foreach i,loc in ranked_list
+	{
+		writeln("<tr><td>"+loc.to_string()+"</td><td>"+loc.turns_spent+"</td></tr>");
+	}
+	writeln("</table>");
+}
+
 void main()
 {
 	auto_settings();			//runs every time. upgrades old settings to newest format, delete obsolete settings, and configures defaults.
@@ -193,7 +267,6 @@ void main()
 
 	//generate settings table
 	file_to_map("autoscend_settings.txt", s);
-	boolean dickstab = false;	//used to detect if we just enabled dickstab
 	fields = form_fields();
 	if(count(fields) > 0)
 	{
@@ -231,39 +304,8 @@ void main()
 				writeln("Changing setting " + prop + " to " + newSetting + "<br>");
 				set_property(prop, newSetting);
 			}
-			
-			if(prop == "auto_dickstab")	//used to detect if we just enabled dickstab
-			{
-				if((newSetting != get_property("auto_dickstab")) && (newSetting == "true"))
-				{
-					dickstab = true;
-				}
-			}
 		}
 	}
-
-	if(dickstab)
-	{
-		writeln("auto_dickstab was just set to true<br>");
-		writeln("Your warranty has been declared void.<br>");
-		writeln("Togging incompatible settings. You can re-enabled them here if you so desire. This resetting only takes effect upon setting auto_dickstab to true.<br><br>");
-		if(get_property("auto_hippyInstead").to_boolean())
-		{
-			set_property("auto_hippyInstead", false);
-			writeln("Disabled auto_hippyInstead.<br>");
-		}
-		if(get_property("auto_ignoreFlyer").to_boolean())
-		{
-			set_property("auto_ignoreFlyer", false);
-			writeln("Disabled auto_ignoreFlyer.<br>");
-		}
-		if(!get_property("auto_delayHauntedKitchen").to_boolean())
-		{
-			set_property("auto_delayHauntedKitchen", true);
-			writeln("Enabled auto_delayHauntedKitchen.<br>");
-		}
-	}
-
 
 	writeln("<form action='' method='post'>");
 	writeln("<table><tr><th width=20%>Setting</th><th width=20%>Value</th><th width=60%>Description</th></tr>");
@@ -290,6 +332,12 @@ void main()
 	writeln("<tr><td align=center colspan='3'><input type='submit' name='' value='Save Changes'/></td></tr></table></form>");
 
 	write_settings_key();		//display the key to the settings table
+	
+	if(get_property("auto_tracker_path") != "")
+	{
+		writeln("<h2>"+my_path()+"</h2>");
+		generateTrackingData("auto_tracker_path");
+	}
 
 	writeln("<h2>Banishes</h2>");
 	generateTrackingData("auto_banishes");
@@ -311,6 +359,12 @@ void main()
 
 	writeln("<h2>Instakills</h2>");
 	generateTrackingData("auto_instakill");
+	
+	writeln("<h2>Beaten Up</h2>");
+	writeln(get_property("auto_beatenUpLocations"));
+
+	writeln("<h2>Forced Noncombats</h2>");
+	generateTrackingDataSplitByNewLine("auto_forcedNC");
 
 	writeln("<h2>Eated</h2>");
 	generateTrackingData("auto_eaten");
@@ -328,6 +382,9 @@ void main()
 		generateTrackingData("auto_wishes");
 	}
 
+	writeln("<h2>Lucky Adventures</h2>");
+	generateTrackingDataSplitByNewLine("auto_lucky");
+
 	if(isActuallyEd())
 	{
 		writeln("<h2>Lash of the Cobra <img src=\"images/itemimages/cobrahead.gif\"></h2>");
@@ -337,7 +394,7 @@ void main()
 		generateTrackingData("auto_renenutet");
 	}
 
-	if(my_path() == "One Crazy Random Summer")
+	if(in_ocrs())
 	{
 		writeln("<h2>One Crazy Random Summer Fun-o-meter!</h2>");
 		generateTrackingData("auto_funTracker");
@@ -355,6 +412,18 @@ void main()
 		generateTrackingData("auto_powerfulglove");
 	}
 
+	if(get_property("auto_iotm_claim") != "")
+	{
+		writeln("<h2>IOTM Item/Effects Claimed.</h2>");
+		generateTrackingData("auto_iotm_claim");
+	}
+	
+	if(get_property("auto_mapperidot") != "")
+	{
+		writeln("<h2>Map the Monsters/Peridot of Peril</h2>");
+		generateTrackingData("auto_mapperidot");
+	}
+	
 	writeln("<h2>Other Stuff</h2>");
 	generateTrackingData("auto_otherstuff");
 
@@ -371,6 +440,9 @@ void main()
 
 	//TODO: need way to track version independent of svn branch since you can have different branches checked out
 	writeln("Autoscend Version: " + autoscend_current_version() + "<br>");
+	
+	writeln("<h2>Locations visited</h2>");
+	write_locations_visited();
 
 	writeln("<br>");
 	writeln("</body></html>");

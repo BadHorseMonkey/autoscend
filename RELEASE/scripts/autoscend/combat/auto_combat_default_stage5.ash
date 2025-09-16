@@ -2,6 +2,9 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 {
 	// stage 5 = kill
 	string retval;
+
+	//Unskip stage 4
+	if(get_property("auto_skipStage4").to_boolean()) set_property("auto_skipStage4", false);
 	
 	// Path = Heavy Rains
 	retval = auto_combatHeavyRainsStage5(round, enemy, text);
@@ -11,15 +14,40 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 	retval = auto_combatPlumberStage5(round, enemy, text);
 	if(retval != "") return retval;
 	
-	// Path = disguises deliimt
+	// Path = disguises delimit
 	retval = auto_combatDisguisesStage5(round, enemy, text);
 	if(retval != "") return retval;
 	
 	// Path = gelatinous noob
 	retval = auto_combatGelatinousNoobStage5(round, enemy, text);
 	if(retval != "") return retval;
+	
+	// Path = you, robot
+	retval = auto_combat_robot_stage5(round, enemy, text);
+	if(retval != "") return retval;
 
-	string combatState = get_property("auto_combatHandler");
+	// Path = zombie slayer
+	retval = auto_combatZombieSlayerStage5(round, enemy, text);
+	if(retval != "") return retval;
+
+	// Path = fall of the dinosaurs
+	retval = auto_combatFallOfTheDinosaursStage5(round, enemy, text);
+	if(retval != "") return retval;
+
+	// Path = Wereprofessor
+	retval = auto_combatWereProfessorStage5(round, enemy, text);
+	if(retval != "") return retval;
+
+	//with loofah, you can stagger and deal cold or hot damage
+	if(canUse($skill[loofah stew]) && monster_element(enemy) != $element[cold])
+	{
+		return useSkill($skill[loofah stew], false);
+	}
+	if (canUse($skill[loofah lava]) && monster_element(enemy) != $element[hot])
+	{
+		return useSkill($skill[loofah lava], false);
+	}
+
 	phylum type = monster_phylum(enemy);
 	string attackMinor = "attack with weapon";
 	string attackMajor = "attack with weapon";
@@ -60,59 +88,36 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 	}
 	
 	//iotm back item and the enemies it spawns (free fights) can be killed using special skills to get extra XP and item drops
-	if(have_equipped($item[Protonic Accelerator Pack]) && isGhost(enemy))
+	if(have_equipped($item[Protonic Accelerator Pack]) && isGhost(enemy) && !combat_status_check("skipGhostbusting"))
 	{
+		//shoot ghost 3 times provoking retaliation, then trap ghost skill unlocks which instawins combat.
 		skill stunner = getStunner(enemy);
 		if(stunner != $skill[none])
 		{
+			combat_status_add("stunned");
 			return useSkill(stunner);
 		}
 
-		if(canUse($skill[Shoot Ghost], false) && (my_mp() > mp_cost($skill[Shoot Ghost])) && !contains_text(combatState, "shootghost3") && !contains_text(combatState, "trapghost"))
+		//shots_takens tracks how many times we used [shoot ghost] skill this combat. it is reset in combat initialize
+		int shots_takens = usedCount($skill[Shoot Ghost]);
+		if(canUse($skill[Shoot Ghost], false) && shots_takens < 3)
 		{
-			boolean shootGhost = true;
-			if(contains_text(combatState, "shootghost2"))
+			int shotsLeft = 3 - shots_takens;
+			if(canSurviveShootGhost(enemy, shotsLeft))
 			{
-				if((damageReceived * 1.075) > my_hp())
-				{
-					shootGhost = false;
-				}
-				else
-				{
-					set_property("auto_combatHandler", combatState + "(shootghost3)");
-				}
-			}
-			else if(contains_text(combatState, "shootghost1"))
-			{
-				if((damageReceived * 2.05) > my_hp())
-				{
-					shootGhost = false;
-				}
-				else
-				{
-					set_property("auto_combatHandler", combatState + "(shootghost2)");
-				}
-			}
-			else
-			{
-				set_property("auto_combatHandler", combatState + "(shootghost1)");
-			}
-
-			if(shootGhost)
-			{
+				markAsUsed($skill[Shoot Ghost]);		//needs to be manually done for skills with a use limit that is not 1
 				return useSkill($skill[Shoot Ghost], false);
 			}
 			else
 			{
-				combatState += "(trapghost)";
-				set_property("auto_combatHandler", combatState);
+				combat_status_add("skipGhostbusting");
 			}
 		}
-		if(!contains_text(combatState, "trapghost") && auto_have_skill($skill[Trap Ghost]) && (my_mp() > mp_cost($skill[Trap Ghost])) && contains_text(combatState, "shootghost3"))
+		
+		if(canUse($skill[Trap Ghost]) && shots_takens == 3)
 		{
 			auto_log_info("Busting makes me feel good!!", "green");
-			set_property("auto_combatHandler", combatState + "(trapghost)");
-			return useSkill($skill[Trap Ghost], false);
+			return useSkill($skill[Trap Ghost]);
 		}
 	}
 	
@@ -140,11 +145,39 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 		return useSkill($skill[Candyblast]);
 	}
 	
+	if((my_class() != $class[Sauceror]) && canUse(auto_spoonCombatSkill()))
+	{
+		return useSkill(auto_spoonCombatSkill());
+	}
+
+	if(auto_haveCosmicBowlingBall() && canUse($item[cosmic bowling ball]) && monster_hp() < 100)
+	{
+		return useItem($item[cosmic bowling ball]);
+	}
+
+	if (canUse($skill[Surprisingly Sweet Stab]))
+	{
+		return useSkill($skill[Surprisingly Sweet Stab]);
+	}
+
+	//Everfull Dart Holder
+	if(have_equipped($item[Everfull Dart Holster]) && get_property("_dartsLeft").to_int() > 0)
+	{
+		return useSkill(dartSkill(), false);
+	}
+    
 	//mortar shell is amazing. it really should not be limited to sauceror only.
 	if(canUse($skill[Stuffed Mortar Shell]) && (my_class() == $class[Sauceror]) && canSurvive(2.0) && (currentFlavour() != monster_element(enemy) || currentFlavour() == $element[none]))
 	{
 		set_property("_auto_combatTracker_MortarRound", round);
 		return useSkill($skill[Stuffed Mortar Shell]);
+	}
+
+	
+	//Roman Candelabra red candle
+	if(have_equipped($item[Roman Candelabra]) && have_effect($effect[Everything Looks Red]) == 0 && !auto_haveDarts())
+	{
+		return useSkill($skill[Blow the Red Candle\!]);
 	}
 
 	//general killing code
@@ -171,29 +204,22 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 
 		if(enemy.physical_resistance > 80)
 		{
-			boolean success = false;
 			foreach sk in $skills[Saucestorm, Saucegeyser, Northern Explosion]
 			{
-				if(canUse(sk, false))
+				if(canUse(sk, false) || (sk == $skill[Northern Explosion] && !auto_canNorthernExplosionFE()))
 				{
 					attackMinor = useSkill(sk, false);
 					attackMajor = useSkill(sk, false);
 					costMinor = mp_cost(sk);
 					costMajor = mp_cost(sk);
-					success = true;
 					break;
 				}
 			}
-			if(!success)
-			{
-				abort("I am fighting a physically immune monster and I do not know how to kill it");
-			}
 		}
-
 		break;
 	case $class[Turtle Tamer]:
 		attackMinor = "attack with weapon";
-		if((my_mp() > 150) && canUse($skill[Shieldbutt], false) && hasShieldEquipped())
+		if(my_mp() > 150 && canUse($skill[Shieldbutt], false))
 		{
 			attackMinor = useSkill($skill[Shieldbutt], false);
 			costMinor = mp_cost($skill[Shieldbutt]);
@@ -208,7 +234,7 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 			attackMajor = useSkill($skill[Kneebutt], false);
 			costMajor = mp_cost($skill[Kneebutt]);
 		}
-		if(canUse($skill[Shieldbutt], false) && hasShieldEquipped())
+		if(canUse($skill[Shieldbutt], false))
 		{
 			attackMajor = useSkill($skill[Shieldbutt], false);
 			costMajor = mp_cost($skill[Shieldbutt]);
@@ -219,7 +245,20 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 			attackMajor = useSkill($skill[Saucestorm], false);
 			costMajor = mp_cost($skill[Saucestorm]);
 		}
-
+		if(enemy.physical_resistance > 80)
+		{
+			foreach sk in $skills[Saucestorm, Saucegeyser]
+			{
+				if(canUse(sk, false))
+				{
+					attackMinor = useSkill(sk, false);
+					attackMajor = useSkill(sk, false);
+					costMinor = mp_cost(sk);
+					costMajor = mp_cost(sk);
+					break;
+				}
+			}
+		}
 		break;
 	case $class[Pastamancer]:
 		if(canUse($skill[Cannelloni Cannon], false))
@@ -254,6 +293,11 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 				costMinor = mp_cost($skill[Utensil Twist]);
 			}
 		}
+		if((in_glover() || attackMinor == "attack with weapon") && canUse($skill[Saucegeyser], false))
+        	{
+            		attackMinor = useSkill($skill[Saucegeyser], false);
+            		costMinor = mp_cost($skill[Saucegeyser]);
+        	}
 		break;
 	case $class[Sauceror]:
 		if(canUse($skill[Saucegeyser], false))
@@ -292,7 +336,7 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 			costMajor = mp_cost($skill[Stream of Sauce]);
 		}
 		
-		#let mortar deal the killing blow so we get more MP from the exploding curse of weaksauce
+		//let mortar deal the killing blow so we get more MP from the exploding curse of weaksauce
 		int mortar_round = get_property("_auto_combatTracker_MortarRound").to_int();
 		if(mortar_round > -1 &&		//mortar was used this combat
 		mortar_round == round-1 &&	//mortar will hit this round
@@ -310,10 +354,18 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 				return useSkill($skill[Salsaball], false);
 			}
 		}
-		
 		break;
 
 	case $class[Avatar of Boris]:
+		// If we're fighting a ghost, of course we want to use elemental damage!
+		if(canUse($skill[Heroic Belch], false) && (enemy.physical_resistance >= 80) && $element[stench] != monster_element(enemy))
+		{
+			attackMinor = useSkill($skill[Heroic Belch]);
+			attackMajor = useSkill($skill[Heroic Belch]);
+			costMinor = mp_cost($skill[Heroic Belch]);
+			costMajor = mp_cost($skill[Heroic Belch]);
+		}
+
 		// Mighty axing is better than attacking as it will never fumble and has no mp cost
 		if(canUse($skill[Mighty Axing], false))
 		{
@@ -447,7 +499,6 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 				costMajor = mp_cost($skill[Grill]);
 			}
 		}
-
 		break;
 
 	case $class[Avatar of Sneaky Pete]:
@@ -496,19 +547,25 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 			costMajor = mp_cost($skill[Saucestorm]);
 		}
 
-		if(enemy.physical_resistance > 80 && canUse($skill[Saucestorm], false))
+		if(enemy.physical_resistance > 80)
 		{
-			attackMinor = useSkill($skill[Saucestorm], false);
-			attackMajor = useSkill($skill[Saucestorm], false);
-			costMinor = mp_cost($skill[Saucestorm]);
-			costMajor = mp_cost($skill[Saucestorm]);
+			foreach sk in $skills[Saucestorm, Saucegeyser]
+			{
+				if(canUse(sk, false))
+				{
+					attackMinor = useSkill(sk, false);
+					attackMajor = useSkill(sk, false);
+					costMinor = mp_cost(sk);
+					costMajor = mp_cost(sk);
+					break;
+				}
+			}
 		}
-
 		break;
 
 	case $class[Disco Bandit]:
 
-		if(auto_have_skill($skill[Disco State of Mind]) && auto_have_skill($skill[Flashy Dancer]) && auto_have_skill($skill[Disco Greed]) && auto_have_skill($skill[Disco Bravado]) && monster_level_adjustment() < 150)
+		if(auto_have_skill($skill[Disco State of Mind]) && auto_have_skill($skill[Flashy Dancer]) && auto_have_skill($skill[Disco Greed]) && auto_have_skill($skill[Disco Bravado]) && stunnable(enemy) && monster_level_adjustment() < 150)
 		{
 			float mpRegen = (numeric_modifier("MP Regen Min") + numeric_modifier("MP Regen Max")) / 2;
 			int netCost = 0;
@@ -529,14 +586,20 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 			costMajor = mp_cost($skill[Saucestorm]);
 		}
 
-		if(enemy.physical_resistance > 80 && canUse($skill[Saucestorm], false))
+		if(enemy.physical_resistance > 80)
 		{
-			attackMinor = useSkill($skill[Saucestorm], false);
-			attackMajor = useSkill($skill[Saucestorm], false);
-			costMinor = mp_cost($skill[Saucestorm]);
-			costMajor = mp_cost($skill[Saucestorm]);
+			foreach sk in $skills[Saucestorm, Saucegeyser]
+			{
+				if(canUse(sk, false))
+				{
+					attackMinor = useSkill(sk, false);
+					attackMajor = useSkill(sk, false);
+					costMinor = mp_cost(sk);
+					costMajor = mp_cost(sk);
+					break;
+				}
+			}
 		}
-
 		break;
 
 	case $class[Cow Puncher]:
@@ -581,7 +644,7 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 			costMinor = mp_cost($skill[Beanstorm]);
 		}
 
-		if(canUse($skill[Fan Hammer], false))
+		if(canUse($skill[Fan Hammer], false) && (enemy.physical_resistance < 80))
 		{
 			attackMajor = useSkill($skill[Fan Hammer], false);
 			attackMinor = useSkill($skill[Fan Hammer], false);
@@ -618,7 +681,7 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 		{
 			if(sk == $skill[Chill of the Tomb] && enemy.monster_element() == $element[cold])
 				continue;
-			if(canUse(sk, false) && my_hp() > 3 * hp_cost(sk))
+			if(canUse(sk, false) && my_hp() > hp_cost(sk))
 			{
 				attackMajor = useSkill(sk, false);
 				attackMinor = useSkill(sk, false);
@@ -637,13 +700,135 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 		// intentionally not setting costMinor or costMajor since they don't cost mp...
 
 		// If we're in a form or something, a beehive is probably better than just attacking
-		if(attackMajor == "attack with weapon" && !have_skill($skill[Preternatural Strength]) && canUse($item[beehive]) && ($stat[moxie] != weapon_type(equipped_item($slot[Weapon]))))
+		if(attackMinor == "attack with weapon" && !have_skill($skill[Preternatural Strength]) && canUse($item[beehive]) && ($stat[moxie] != weapon_type(equipped_item($slot[Weapon]))))
 		{
-			attackMajor = useItem($item[beehive], false);
 			attackMinor = useItem($item[beehive], false);
 		}
 		break;
-	}
+
+	case $class[Pig Skinner]:
+		attackMinor = "attack with weapon";
+		if(canUse($skill[Ball Throw], true) && (enemy.physical_resistance < 80))
+		{
+			attackMajor = useSkill($skill[Ball Throw], true);
+			attackMinor = useSkill($skill[Ball Throw], true);
+			costMajor = mp_cost($skill[Ball Throw]);
+			costMinor = mp_cost($skill[Ball Throw]);
+		}
+		if(canUse($skill[Hot Foot], true) && (enemy.defense_element != $element[hot]) && !enemyCanBlocksSkills())
+		{
+			attackMajor = useSkill($skill[Hot Foot], true);
+			attackMinor = useSkill($skill[Hot Foot], true);
+			costMajor = mp_cost($skill[Hot Foot]);
+			costMinor = mp_cost($skill[Hot Foot]);
+		}
+		if(canUse($skill[Stop Hitting Yourself], true) && (enemy.physical_resistance < 80))
+		{
+			attackMajor = useSkill($skill[Stop Hitting Yourself], true);
+			attackMinor = useSkill($skill[Stop Hitting Yourself], true);
+			costMajor = mp_cost($skill[Stop Hitting Yourself]);
+			costMinor = mp_cost($skill[Stop Hitting Yourself]);
+		}
+		if((my_hp() / 0.5 < my_maxhp()) && canUse($skill[Second Wind], true))
+		{
+			attackMajor = useSkill($skill[Second Wind], true);
+			attackMinor = useSkill($skill[Second Wind], true);
+			costMajor = mp_cost($skill[Second Wind]);
+			costMinor = mp_cost($skill[Second Wind]);
+		}
+		break;
+
+	case $class[Cheese Wizard]:
+		attackMinor = "attack with weapon";
+		if(canUse($skill[Parmesan Missile]))
+		{
+			attackMajor = useSkill($skill[Parmesan Missile], false);
+			attackMinor = useSkill($skill[Parmesan Missile], false);
+			costMajor = mp_cost($skill[Parmesan Missile]);
+			costMinor = mp_cost($skill[Parmesan Missile]);
+		}
+		if(canUse($skill[Crack Knuckles]) && (enemy.physical_resistance < 80))
+		{
+			attackMajor = useSkill($skill[Crack Knuckles], true);
+			attackMinor = useSkill($skill[Crack Knuckles], true);
+			costMajor = mp_cost($skill[Crack Knuckles]);
+			costMinor = mp_cost($skill[Crack Knuckles]);
+		}
+		if(canUse($skill[Mind Melt], true))
+		{
+			attackMajor = useSkill($skill[Mind Melt], true);
+			attackMinor = useSkill($skill[Mind Melt], true);
+			costMajor = mp_cost($skill[Mind Melt]);
+			costMinor = mp_cost($skill[Mind Melt]);
+		}
+		if(canUse($skill[Stilton Splatter], true) && (enemy.physical_resistance < 80))
+		{
+			attackMajor = useSkill($skill[Stilton Splatter], true);
+			attackMinor = useSkill($skill[Stilton Splatter], true);
+			costMajor = mp_cost($skill[Stilton Splatter]);
+			costMinor = mp_cost($skill[Stilton Splatter]);
+		}
+		if(canUse($skill[Emmental Elemental], true) && (my_hp() / 0.7) < my_maxhp())
+		{
+			attackMajor = useSkill($skill[Emmental Elemental], true);
+			attackMinor = useSkill($skill[Emmental Elemental], true);
+			costMajor = mp_cost($skill[Emmental Elemental]);
+			costMinor = mp_cost($skill[Emmental Elemental]);
+		}
+		break;
+		
+	case $class[Jazz Agent]:
+		attackMinor = "attack with weapon";
+		if(canUse($skill[Orchestra Strike], false) && (enemy.physical_resistance < 80))
+		{
+			attackMajor = useSkill($skill[Orchestra Strike], false);
+			attackMinor = useSkill($skill[Orchestra Strike], false);
+			costMajor = mp_cost($skill[Orchestra Strike]);
+			costMinor = mp_cost($skill[Orchestra Strike]);
+		}
+		if(canUse($skill[Sax of Violence], false) && (enemy.defense_element != $element[sleaze]))
+		{
+			attackMajor = useSkill($skill[Sax of Violence], false);
+			attackMinor = useSkill($skill[Sax of Violence], false);
+			costMajor = mp_cost($skill[Sax of Violence]);
+			costMinor = mp_cost($skill[Sax of Violence]);
+		}
+		if(canUse($skill[Venomous Riff], true))
+		{
+			attackMajor = useSkill($skill[Venomous Riff], true);
+			attackMinor = useSkill($skill[Venomous Riff], true);
+			costMajor = mp_cost($skill[Venomous Riff]);
+			costMinor = mp_cost($skill[Venomous Riff]);
+		}
+		if(canUse($skill[Knife In The Darkness], true) && zone_combatMod(my_location())._int < 0)
+		{
+			attackMajor = useSkill($skill[Knife In The Darkness], true);
+			attackMinor = useSkill($skill[Knife In The Darkness], true);
+			costMajor = mp_cost($skill[Knife In The Darkness]);
+			costMinor = mp_cost($skill[Knife In The Darkness]);
+		}
+		if(canUse($skill[Grit Teeth], false, true) && my_hp() < my_maxhp() && combat_status_check("stunned") && round < 5)
+		{
+			attackMajor = useSkill($skill[Grit Teeth], true);
+			attackMinor = useSkill($skill[Grit Teeth], true);
+			costMajor = mp_cost($skill[Grit Teeth]);
+			costMinor = mp_cost($skill[Grit Teeth]);
+		}
+		break;
+	
+	case $class[zootomist]:
+		skill punch = getZooBestPunch(enemy);
+		if(punch == $skill[none])
+		{
+			return "attack with weapon";
+		}
+		attackMajor = useSkill(punch, false);
+		attackMinor = useSkill(punch, false);
+		costMajor = mp_cost(punch);
+		costMinor = mp_cost(punch);
+		break;
+		
+	} // class attack selection
 
 	if(((my_hp() * 10)/3) < my_maxhp())
 	{
@@ -660,7 +845,7 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 		{
 			return useSkill($skill[Thousand-Yard Stare]);
 		}
-		if($monsters[Aquagoblin, Lord Soggyraven, Groar] contains enemy && (my_mp() >= costMajor))
+		if($monsters[Aquagoblin, Lord Soggyraven, Groar, The Big Wisniewski, The Man] contains enemy && (my_mp() >= costMajor))
 		{
 			return attackMajor;
 		}
@@ -671,15 +856,15 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 				return useSkill($skill[Spirit Snap]);
 			}
 		}
-		if(canUse($skill[Northern Explosion]) && (my_class() == $class[Seal Clubber]) && (monster_element(enemy) != $element[cold]) && (hasClubEquipped() || (buffed_hit_stat() - 20) > monster_defense()))
+		if(canUse($skill[Northern Explosion]) && !auto_canNorthernExplosionFE() && (my_class() == $class[Seal Clubber]) && (monster_element(enemy) != $element[cold]) && (hasClubEquipped() || (buffed_hit_stat() - 20) > monster_defense()))
 		{
 			return useSkill($skill[Northern Explosion]);
 		}
-		if((!contains_text(combatState, "last attempt")) && (my_mp() >= costMajor))
+		if((!combat_status_check("last attempt")) && (my_mp() >= costMajor))
 		{
 			if(canSurvive(1.4))
 			{
-				set_property("auto_combatHandler", combatState + "(last attempt)");
+				combat_status_add("last attempt");
 				auto_log_warning("Uh oh, I'm having trouble in combat.", "red");
 			}
 			return attackMajor;
@@ -732,6 +917,72 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 		return useSkill($skill[Skunk Glands], false);
 	}
 
+	// final check for physically immune monsters we are planning on simply attacking
+	// determine if attacking will deal reasonable damage
+	// note preadv *should* ensure we can damage physically immune monsters via a spell or attack
+	// this check could be redundant. If preadv worked as intended and we haven't picked a spell yet, attack should deal damage
+	if(enemy.physical_resistance >= 80 && attackMinor == "attack with weapon")
+	{
+		boolean success = false;
+		int m_hot = 1;
+		int m_cold = 1;
+		int m_spooky = 1;
+		int m_sleaze = 1;
+		int m_stench = 1;
+		switch(monster_element(enemy))
+		{
+			case $element[hot]:
+				m_hot = 0;
+				m_sleaze = 2;
+				m_stench = 2;
+				break;
+			case $element[cold]:
+				m_cold = 0;
+				m_hot = 2;
+				m_spooky = 2;
+				break;
+			case $element[spooky]:
+				m_spooky = 0;
+				m_hot = 2;
+				m_stench = 2;
+				break;
+			case $element[sleaze]:
+				m_sleaze = 0;
+				m_cold = 2;
+				m_spooky = 2;
+				break;
+			case $element[stench]:
+				m_stench = 0;
+				m_sleaze = 2;
+				m_cold = 2;
+				break;
+		}
+
+		int elementalDamage =
+							m_hot * numeric_modifier("hot damage") +
+							m_cold * numeric_modifier("cold damage") +
+							m_spooky * numeric_modifier("spooky damage") +
+							m_sleaze * numeric_modifier("sleaze damage") +
+							m_stench * numeric_modifier("stench damage");
+
+		// try to kill within 5 turns
+		if(elementalDamage * 5 < monster_hp())
+		{
+			abort("I am fighting a physically immune monster and I do not know how to kill it");
+		}
+	}
+
+	// Wu Tang the Betrayer is immune to spells and normal attacks, but not Fist skills or Spectral Snapper
+	if (enemy == $monster[Wu Tang the Betrayer]) {
+		foreach sk in $skills[Spectral Snapper, Stinkpalm, Drunken Baby Style, Zendo Kobushi Kancho, Chilled Monkey Brain Technique, Knuckle Sandwich, Seven-Finger Strike, Flying Fire Fist] {
+			if(canUse(sk, false))
+			{
+				return useSkill(sk, false);
+			}
+		}
+		abort("Wu Tang the Betrayer is immune to spells and normal attacks, and I do not know how to kill him");
+	}
+
 	if((my_location() == $location[The X-32-F Combat Training Snowman]) && contains_text(text, "Cattle Prod") && (my_mp() >= costMajor))
 	{
 		return attackMajor;
@@ -742,7 +993,7 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 		return attackMajor;
 	}
 
-	if($monsters[Aquagoblin, Lord Soggyraven, Groar] contains enemy && (my_mp() >= costMajor))
+	if($monsters[Aquagoblin, Lord Soggyraven, Groar, The Big Wisniewski, The Man] contains enemy && (my_mp() >= costMajor))
 	{
 		return attackMajor;
 	}
@@ -757,6 +1008,11 @@ string auto_combatDefaultStage5(int round, monster enemy, string text)
 	}
 
 	if((round > 20) && canUse($skill[Saucestorm], false))
+	{
+		return useSkill($skill[Saucestorm], false);
+	}
+
+	if((attackMinor == "attack with weapon") && monster_defense() > 20 && (buffed_hit_stat() - 20) < monster_defense() && canUse($skill[Saucestorm], false))
 	{
 		return useSkill($skill[Saucestorm], false);
 	}

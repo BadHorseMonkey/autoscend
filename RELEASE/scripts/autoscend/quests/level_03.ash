@@ -1,6 +1,6 @@
 boolean auto_tavern()
 {
-	if (internalQuestStatus("questL03Rat") != 1)
+	if(internalQuestStatus("questL03Rat") != 1)
 	{
 		return false;
 	}
@@ -14,12 +14,12 @@ boolean auto_tavern()
 	auto_log_info("In the tavern! Layout: " + get_property("tavernLayout"), "blue");
 	boolean [int] locations = $ints[3, 2, 1, 0, 5, 10, 15, 20, 16, 21];
 
-	// Infrequent compunding issue, reset maximizer
+	// infrequent compounding issue, reset maximizer
 	resetMaximize();
 
 	boolean maximized = false;
-	//Sleaze is the only one we don't care about
-	if (possessEquipment($item[Kremlin\'s Greatest Briefcase]))
+	// sleaze is the only one we don't care about
+	if(possessEquipment($item[Kremlin\'s Greatest Briefcase]))
 	{
 		string mod = string_modifier($item[Kremlin\'s Greatest Briefcase], "Modifiers");
 		if(contains_text(mod, "Weapon Damage Percent"))
@@ -40,57 +40,96 @@ boolean auto_tavern()
 			}
 		}
 	}
-
-	if(numeric_modifier("Hot Damage") < 20.0)
+	
+	// We need 20 each of the elements except sleaze to skip noncombats
+	void try_buff_damage(element el, effect ef)
 	{
-		buffMaintain($effect[Pyromania], 20, 1, 1);
-	}
-	if(numeric_modifier("Cold Damage") < 20.0)
-	{
-		buffMaintain($effect[Frostbeard], 20, 1, 1);
-	}
-	if(numeric_modifier("Stench Damage") < 20.0)
-	{
-		buffMaintain($effect[Rotten Memories], 20, 1, 1);
-	}
-	if(numeric_modifier("Spooky Damage") < 20.0)
-	{
-		if(auto_have_skill($skill[Intimidating Mien]))
+		if (numeric_modifier(damageModifier(el)) < 20.0)
 		{
-			buffMaintain($effect[Intimidating Mien], 20, 1, 1);
-		}
-		else
-		{
-			buffMaintain($effect[Dirge of Dreadfulness], 20, 1, 1);
-			buffMaintain($effect[Snarl of the Timberwolf], 20, 1, 1);
+			buffMaintain(ef,20,1,1);
 		}
 	}
 
-	if (!isActuallyEd() && monster_level_adjustment() <= 299)
+	try_buff_damage($element[hot   ], $effect[Pyromania]);
+	try_buff_damage($element[cold  ], $effect[Frostbeard]);
+	try_buff_damage($element[cold  ], $effect[Song of the North]);
+	try_buff_damage($element[stench], $effect[Rotten Memories]);
+	try_buff_damage($element[spooky], $effect[Intimidating Mien]);
+	try_buff_damage($element[spooky], $effect[Dirge of Dreadfulness (Remastered)]);
+	try_buff_damage($element[spooky], $effect[Dirge of Dreadfulness]);
+	try_buff_damage($element[spooky], $effect[Snarl of Three Timberwolves]);
+	try_buff_damage($element[spooky], $effect[Snarl of the Timberwolf]);
+	
+	int max_ml_target = 150;
+
+	if(!isActuallyEd() && monster_level_adjustment() <= 299)
 	{
-		auto_MaxMLToCap(auto_convertDesiredML(150), true);
+		auto_MaxMLToCap(auto_convertDesiredML(max_ml_target), true);
 	}
 	else
 	{
-		auto_MaxMLToCap(auto_convertDesiredML(150), false);
+		auto_MaxMLToCap(auto_convertDesiredML(max_ml_target), false);
 	}
 
 	foreach element_type in $strings[Hot, Cold, Stench, Sleaze, Spooky]
 	{
 		if(numeric_modifier(element_type + " Damage") < 20.0)
 		{
+			if(in_glover() && element_type != "Stench") // the only one that works in g-lover
+			{
+				continue;
+			}
 			auto_beachCombHead(element_type);
 		}
 	}
 
 	if(!maximized)
 	{
-		// Tails are a better time saving investment
-		addToMaximize("80cold damage 20max,80hot damage 20max,80spooky damage 20max,80stench damage 20max,500ml " + auto_convertDesiredML(150) + "max");
-		simMaximize();
+		// Tails are a better time saving investment. Add -combat to ensure sim and real maximizer results match
+		simMaximizeWith("80cold damage 20max,80hot damage 20max,80spooky damage 20max,80stench damage 20max,500ml " + auto_convertDesiredML(max_ml_target) + "max,-200combat 25max");
 		maximized = true;
 	}
-	int [string] eleChoiceCombos = {
+
+	int n_passed() // We pass an elemental damage check if we have 20 damage for that element
+	{
+		int n = 0;
+		foreach el in $elements[hot,cold,spooky,stench]
+		{
+			if (simValue(damageModifier(el)) >= 20.0)
+			{
+				n++;
+			}
+		}
+		return n; // 4 is success here
+	}
+	boolean all_passed() // do we pass all of the damage checks?
+	{
+		return n_passed() >= 4;
+	}
+
+	// Consider a pull
+	foreach it in $items[17-ball, rare oboe, recording of benetton's medley of diversity]
+	{
+		if (!all_passed())
+		{
+			if (pullXWhenHaveY(it,1,0))
+			{
+				simMaximizeWith("80cold damage 20max,80hot damage 20max,80spooky damage 20max,80stench damage 20max,500ml " + auto_convertDesiredML(max_ml_target) + "max,-200combat 25max");
+			}
+		}
+	}
+
+	if (!all_passed())
+	{
+		item rec = $item[recording of Benetton's Medley of Diversity];
+		if (available_amount(rec) > 0)
+		{
+			use(1,rec);
+		}
+	}
+
+	int [string] eleChoiceCombos =
+	{
 		"Cold": 513,
 		"Hot": 496,
 		"Spooky": 515,
@@ -101,15 +140,22 @@ boolean auto_tavern()
 	{
 		boolean passed = simValue(ele + " Damage") >= 20.0;
 		set_property("choiceAdventure" + choicenum, passed ? "2" : "1");
-		if(passed) ++capped;
+		if(passed)
+		{
+			++capped;
+			//adding a 20min argument does not yield better combinations nor avoid giving value to failed elements
+			addToMaximize("80" + ele + " Damage 20max");	//only give value to elements that will pass
+		}
 	}
+	addToMaximize("500ml " + auto_convertDesiredML(max_ml_target) + "max");
+	
 	if(capped >= 3)
 	{
-		providePlusNonCombat(25);
+		providePlusNonCombat(auto_combatModCap(), $location[Noob Cave]);
 	}
 	else
 	{
-		providePlusCombat(25);
+		providePlusCombat(20, $location[Noob Cave]);
 	}
 
 	string tavern = get_property("tavernLayout");
@@ -130,8 +176,9 @@ boolean auto_tavern()
 		{
 			int actual = loc + 1;
 			boolean needReset = false;
+			set_property("auto_nonAdvLoc", true);
 
-			if(autoAdvBypass("cellar.php?action=explore&whichspot=" + actual, $location[Noob Cave]))
+			if(autoAdvBypass("cellar.php?action=explore&whichspot=" + actual, $location[The Typical Tavern Cellar]))
 			{
 				return true;
 			}
@@ -153,7 +200,7 @@ boolean auto_tavern()
 				auto_log_warning("Tavern handler: You are RL drunk, you should not be here.", "red");
 				autoAdv(1, $location[Noob Cave]);
 			}
-			if(last_monster() == $monster[Crate])
+			if(last_monster() == $monster[Crate] || (in_wereprof() && !($location[Noob Cave].turns_spent < 8))) //want 7 turns of Noob Cave in WereProfessor for Smashed Scientific Equipment
 			{
 				if(get_property("auto_newbieOverride").to_boolean())
 				{
@@ -188,12 +235,12 @@ boolean auto_tavern()
 
 boolean L3_tavern()
 {
-	if (internalQuestStatus("questL03Rat") < 0 || internalQuestStatus("questL03Rat") > 2)
+	if(internalQuestStatus("questL03Rat") < 0 || internalQuestStatus("questL03Rat") > 2)
 	{
 		return false;
 	}
 
-	if (internalQuestStatus("questL03Rat") < 1)
+	if(internalQuestStatus("questL03Rat") < 1)
 	{
 		visit_url("tavern.php?place=barkeep");
 	}
@@ -212,12 +259,7 @@ boolean L3_tavern()
 
 	boolean delayTavern = false;
 
-	if (isActuallyEd())
-	{
-		set_property("choiceAdventure1000", "1"); // Everything in Moderation: turn on the faucet (completes quest)
-		set_property("choiceAdventure1001", "2"); // Hot and Cold Dripping Rats: Leave it alone (don't fight a rat)
-	}
-	else if(!enoughElement || (my_mp() < mpNeed))
+	if(!enoughElement || (my_mp() < mpNeed))
 	{
 		if((my_daycount() <= 2) && (my_level() <= 11))
 		{
@@ -249,12 +291,12 @@ boolean L3_tavern()
 
 	auto_setMCDToCap();
 
-	if (auto_tavern())
+	if(auto_tavern())
 	{
 		return true;
 	}
 
-	if (internalQuestStatus("questL03Rat") > 1)
+	if(internalQuestStatus("questL03Rat") > 1)
 	{
 		visit_url("tavern.php?place=barkeep");
 		council();

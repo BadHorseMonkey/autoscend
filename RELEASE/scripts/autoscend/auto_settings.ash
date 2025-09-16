@@ -32,6 +32,40 @@ boolean trackingSplitterFixer(string oldSetting, int day, string newSetting)
 	return true;
 }
 
+void cleanup_property(string target)
+{
+	//we need to clear out empty property that exist with an empty value.
+	//aside from being messy they also cause problems such as rename_property refusing to work.
+	if(get_property(target) == "" && property_exists(target))
+	{
+		remove_property(target);
+	}
+}
+
+void auto_rename_property(string oldprop, string newprop)
+{
+	cleanup_property(oldprop);
+	cleanup_property(newprop);
+	if(!property_exists(oldprop) || property_exists(newprop))
+	{
+		return;
+	}
+	rename_property(oldprop,newprop);
+}
+
+void boolFix(string p)
+{
+	string p_val = get_property(p);
+	if(p_val == "need" || p_val == "yes")
+	{
+		set_property(p, true);
+	}
+	if(p_val == "no")
+	{
+		set_property(p, false);
+	}
+}
+
 void auto_settingsUpgrade()
 {
 	//upgrade settings from old format to new format.
@@ -71,43 +105,11 @@ void auto_settingsUpgrade()
 		set_property("auto_killingjar", "finished");
 	}
 	
-	if(get_property("auto_wandOfNagamar") == "yes")
-	{
-		set_property("auto_wandOfNagamar", true);
-	}
-	if(get_property("auto_wandOfNagamar") == "no")
-	{
-		set_property("auto_wandOfNagamar", false);
-	}
-	if(get_property("auto_chasmBusted") == "yes")
-	{
-		set_property("auto_chasmBusted", true);
-	}
-	if(get_property("auto_chasmBusted") == "no")
-	{
-		set_property("auto_chasmBusted", false);
-	}
-
-	if(property_exists("auto_edDelayTimer"))
-	{
-		set_property("auto_delayTimer", get_property("auto_edDelayTimer"));
-	}
-	if(get_property("auto_grimstoneFancyOilPainting") == "need")
-	{
-		set_property("auto_grimstoneFancyOilPainting", true);
-	}
-	if(get_property("auto_grimstoneFancyOilPainting") == "no")
-	{
-		set_property("auto_grimstoneFancyOilPainting", false);
-	}
-	if(get_property("auto_grimstoneOrnateDowsingRod") == "need")
-	{
-		set_property("auto_grimstoneOrnateDowsingRod", true);
-	}
-	if(get_property("auto_grimstoneOrnateDowsingRod") == "no")
-	{
-		set_property("auto_grimstoneOrnateDowsingRod", false);
-	}
+	boolFix("auto_wandOfNagamar");
+	boolFix("auto_chasmBusted");
+	auto_rename_property("auto_edDelayTimer", "auto_delayTimer");
+	boolFix("auto_grimstoneFancyOilPainting");
+	boolFix("auto_grimstoneOrnateDowsingRod");
 
 	if(get_property("auto_abooclover") == "used")
 	{
@@ -158,6 +160,14 @@ void auto_settingsUpgrade()
 				set_property("auto_log_level", 3);
 				break;
 		}
+	}
+
+	//this supports the default logging level change from info(2) to debug(3)
+	//default only effects new users, this migrates current users to the new default level of logging
+	if(!property_exists("logLevelDefaultChangedToDebug"))
+	{
+		set_property("auto_log_level", 3);
+		set_property("logLevelDefaultChangedToDebug",true);
 	}
 }
 
@@ -291,6 +301,25 @@ void auto_settingsDelete()
 	remove_property("auto_useTatter");				//obsolete combat directive to use [Tattered Scrap Of Paper] to escape combat
 	remove_property("auto_alwaysGetSteelOrgan");	//renamed to auto_getSteelOrgan_initialize
 	remove_property("auto_logLevel");		//replaced string auto_logLevel with int auto_log_level
+	remove_property("auto_bedtime_pulls_skip_clover"); //replaced option of pulling multiple ten-leaf clovers with always pulling an 11-leaf clover
+	remove_property("cloverProtectActive"); //obsolete with change to Lucky! adventures
+	remove_property("auto_edCombatHandler");	//ed can use the same tracking preference as all other paths
+	remove_property("auto_combatHandler");		//replaced with _auto_combatState
+	remove_property("auto_skipNEPOverride"); // unnecessary. Resources on hand should be used to progress quests.
+	remove_property("auto_dickstab"); // Just no.
+	remove_property("auto_getDinseyGarbageMoney"); // irrelevant in-run.
+	remove_property("auto_hatchRagamuffinImp"); // remnant which should've been removed along with the code.
+	remove_property("auto_saveMagicalSausage"); // unnecessary. Resources on hand should be used to progress quests.
+	remove_property("auto_useWishes"); // unnecessary. Resources on hand should be used to progress quests.
+	remove_property("auto_doNotUseCMC"); // unnecessary. Predates 2023 ascension workshed changes & as above resources on hand should be used to progress quests.
+	remove_property("auto_doArtistQuest"); // irrelevant in-run.
+	remove_property("auto_noSleepingDog"); // old & unused since consumption was rewritten 3-4 years ago.
+	remove_property("auto_cookie"); // old & unused since the semirare & clover revamp.
+	remove_property("auto_doArmory"); // irrelevant in-run.
+	remove_property("auto_doMeatsmith"); // irrelevant in-run.
+	remove_property("auto_waitingArrowAlcove"); // easier methods of handling this. Mafia has tracking properties for 10+ year old IotMs.
+	remove_property("auto_combatHandlerFingernailClippers"); // irrelevant in-run.
+	remove_property("auto_delayHauntedKitchen"); // We shouldn't need to rely on the user to tell us how to play because users are often terrible at the game.
 }
 
 void defaultConfig(string prop, string val)
@@ -308,13 +337,13 @@ void auto_settingsDefaults()
 	//set default values for settings which have not yet been configured
 	defaultConfig("auto_delayTimer", "1");
 	defaultConfig("auto_abooclover", "true");		//Are we considering using a clover at A-Boo Peak?
+	defaultConfig("auto_consumablePriceLimit", "12000");	// Max mall price for consumables to eat/drink (also won't exceed mafia's autobuy limit).
 	defaultConfig("auto_paranoia", "-1");
 	defaultConfig("auto_inv_paranoia", "false");
 	defaultConfig("auto_save_adv_override", "-1");
-	defaultConfig("auto_log_level", "2");
+	defaultConfig("auto_log_level", "3");
 	defaultConfig("auto_log_level_restore", "0");
 	defaultConfig("auto_bedtime_pulls_skip", "false");
-	defaultConfig("auto_bedtime_pulls_skip_clover", "false");
 	defaultConfig("auto_bedtime_pulls_pvp_multi", "0.3");
 	defaultConfig("auto_bedtime_pulls_min_desirability", "1.0");
 }
